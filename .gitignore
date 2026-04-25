@@ -1,0 +1,16 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.expo/
+.expo-shared/
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+venv/
+
+# Misc
+.DS_Store

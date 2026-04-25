@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Golf Swing Analyzer",
+    "slug": "golf-swing-analyzer",
+    "version": "1.0.0",
+    "platforms": ["ios", "android"],
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Golf Swing Analyzer to use the camera to record your swing."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow Golf Swing Analyzer to use the camera to record your swing."
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+const BASE_LANDMARKS = {
+  NOSE: { x: 0.5, y: 0.19, z: -0.08 },
+  LEFT_SHOULDER: { x: 0.42, y: 0.32, z: -0.03 },
+  RIGHT_SHOULDER: { x: 0.58, y: 0.32, z: -0.02 },
+  LEFT_ELBOW: { x: 0.36, y: 0.43, z: -0.04 },
+  RIGHT_ELBOW: { x: 0.64, y: 0.43, z: -0.03 },
+  LEFT_WRIST: { x: 0.31, y: 0.54, z: -0.04 },
+  RIGHT_WRIST: { x: 0.69, y: 0.54, z: -0.03 },
+  LEFT_HIP: { x: 0.44, y: 0.56, z: 0 },
+  RIGHT_HIP: { x: 0.56, y: 0.56, z: 0.01 },
+  LEFT_KNEE: { x: 0.42, y: 0.73, z: 0.02 },
+  RIGHT_KNEE: { x: 0.58, y: 0.73, z: 0.03 },
+  LEFT_ANKLE: { x: 0.41, y: 0.91, z: 0.04 },
+  RIGHT_ANKLE: { x: 0.59, y: 0.91, z: 0.04 },
+};
+
+const toLandmarks = (offset) =>
+  Object.entries(BASE_LANDMARKS).map(([name, landmark]) => ({
+    name,
+    x: landmark.x + offset.x,
+    y: landmark.y + offset.y,
+    z: landmark.z + offset.z,
+    visibility: 0.92,
+  }));
+
+export const createMockPoseFrames = () => [
+  {
+    frameIndex: 0,
+    timestampMs: 0,
+    landmarks: toLandmarks({ x: 0, y: 0, z: 0 }),
+  },
+  {
+    frameIndex: 1,
+    timestampMs: 550,
+    landmarks: toLandmarks({ x: -0.015, y: -0.025, z: 0.02 }),
+  },
+  {
+    frameIndex: 2,
+    timestampMs: 1050,
+    landmarks: toLandmarks({ x: 0.02, y: -0.015, z: -0.015 }),
+  },
+  {
+    frameIndex: 3,
+    timestampMs: 1420,
+    landmarks: toLandmarks({ x: 0.01, y: 0.018, z: 0.01 }),
+  },
+];

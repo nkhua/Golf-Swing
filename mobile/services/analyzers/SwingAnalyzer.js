@@ -24,6 +24,7 @@ export const createFallbackVideoMetadata = (overrides = {}) => ({
 export const normalizeSwingPayload = (payload, defaults = {}) => ({
   swingId: payload?.swingId || defaults.swingId || `swing-${Date.now()}`,
   source: payload?.source || defaults.source || 'server',
+  localVideoUri: payload?.localVideoUri || defaults.localVideoUri,
   videoMetadata: {
     ...createFallbackVideoMetadata(defaults.videoMetadata),
     ...(payload?.videoMetadata || {}),

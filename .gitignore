@@ -11,6 +11,8 @@ __pycache__/
 *.py[cod]
 .env
 venv/
+backend/models/
+backend/uploads/
 
 # Misc
 .DS_Store

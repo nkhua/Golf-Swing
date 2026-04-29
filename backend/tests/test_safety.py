@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from config import ConfigError, Settings
 from safety import assert_video_upload_allowed, build_llm_payload, maybe_delete_raw_video, redact_mapping
@@ -78,6 +79,18 @@ class SafetyTests(unittest.TestCase):
             path.write_bytes(b'video')
             maybe_delete_raw_video(path, active_settings=settings)
             self.assertFalse(path.exists())
+
+    def test_locked_raw_video_cleanup_does_not_mask_original_error(self):
+        settings = make_settings(ALLOW_VIDEO_UPLOAD='true')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'swing.mp4'
+            path.write_bytes(b'video')
+
+            with patch.object(Path, 'unlink', side_effect=PermissionError('locked')):
+                with self.assertWarns(RuntimeWarning):
+                    deleted = maybe_delete_raw_video(path, active_settings=settings)
+
+            self.assertFalse(deleted)
 
     def test_production_fails_with_unsafe_config(self):
         with self.assertRaises(ConfigError):

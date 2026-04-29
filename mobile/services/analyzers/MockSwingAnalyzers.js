@@ -1,4 +1,5 @@
 import { normalizeSwingPayload } from './SwingAnalyzer';
+import { createMockPoseFrames } from '../model/mockPoseFrames';
 
 export const createMockSwingAnalysisPayload = (source = 'on_device') =>
   normalizeSwingPayload({
@@ -19,16 +20,7 @@ export const createMockSwingAnalysisPayload = (source = 'on_device') =>
       impact: 1420,
       finish: 2100,
     },
-    poseFrames: [
-      {
-        frameIndex: 0,
-        timestampMs: 0,
-        landmarks: [
-          { name: 'LEFT_SHOULDER', x: 0.44, y: 0.31, z: -0.03, visibility: 0.95 },
-          { name: 'RIGHT_SHOULDER', x: 0.57, y: 0.32, z: -0.02, visibility: 0.95 },
-        ],
-      },
-    ],
+    poseFrames: createMockPoseFrames(),
     biomechanics: {
       tempoRatio: 2.84,
       backswingTimeMs: 1050,

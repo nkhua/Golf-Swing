@@ -36,6 +36,23 @@ A cross-platform mobile golf swing analyzer moving toward privacy-first, mobile-
 
 Expo Go cannot load custom native MediaPipe modules directly. The code includes TODO stubs for an Expo development build/native module path, iOS and Android MediaPipe Pose Landmarker bindings, and a possible React Native Vision Camera frame processor.
 
+### Testing Real Skeletons With Expo Go
+
+The Expo app can record real user video today, but real pose extraction happens through the local backend. The on-device analyzer is currently a mock/stub unless a future native MediaPipe module is added.
+
+1. Copy `mobile/.env.expo-real-video.example` to `mobile/.env`, then replace `YOUR_COMPUTER_LAN_IP` with your computer's IPv4 address.
+2. In `mobile/.env`, confirm:
+   - `EXPO_PUBLIC_ANALYSIS_MODE=server`
+   - `EXPO_PUBLIC_ENABLE_MOCK_ON_DEVICE_ANALYSIS=false`
+   - `EXPO_PUBLIC_BACKEND_URL=http://YOUR_COMPUTER_LAN_IP:8000`
+   - `ALLOW_VIDEO_UPLOAD=true`
+   - `DELETE_RAW_VIDEO_AFTER_ANALYSIS=true`
+3. Start the backend with `uvicorn main:app --reload --host 0.0.0.0 --port 8000`.
+4. Confirm your phone can open `http://YOUR_COMPUTER_LAN_IP:8000/health`.
+5. Start Expo with `npm run start:lan` from `mobile/`.
+6. Record a swing, then tap `Upload and Process`.
+7. The results screen should show `Pose source: Real video processed by backend MediaPipe`, non-zero pose frames, a skeleton overlay on the captured video, and a standalone 3D skeleton.
+
 ### Backend
 
 1. Open `backend/`

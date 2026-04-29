@@ -10,6 +10,7 @@ import numpy as np
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.core import base_options
 from mediapipe.tasks.python.vision.core import image as mp_image
+from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 
 MODEL_URL = 'https://storage.googleapis.com/mediapipe-tasks/pose_landmarker/pose_landmarker_full.task'
 MODEL_PATH = Path(__file__).resolve().parent.parent / 'models' / 'pose_landmarker_full.task'
@@ -31,7 +32,7 @@ def _create_pose_landmarker() -> vision.PoseLandmarker:
     _download_model_asset()
     options = vision.PoseLandmarkerOptions(
         base_options=base_options.BaseOptions(model_asset_path=str(MODEL_PATH)),
-        running_mode=vision.VisionTaskRunningMode.IMAGE,
+        running_mode=VisionTaskRunningMode.IMAGE,
         num_poses=1,
         min_pose_detection_confidence=0.5,
         min_pose_presence_confidence=0.5,
@@ -79,7 +80,7 @@ def extract_pose_landmarks(video_path: str) -> Tuple[List[Dict[str, object]], Di
     if not cap.isOpened():
         raise RuntimeError(f'Unable to open video: {video_path}')
 
-    pose_landmarker = _create_pose_landmarker()
+    pose_landmarker = None
     frames: List[Dict[str, object]] = []
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
@@ -89,6 +90,8 @@ def extract_pose_landmarks(video_path: str) -> Tuple[List[Dict[str, object]], Di
     frame_index = 0
 
     try:
+        pose_landmarker = _create_pose_landmarker()
+
         while True:
             has_frame, frame = cap.read()
             if not has_frame:
@@ -122,7 +125,8 @@ def extract_pose_landmarks(video_path: str) -> Tuple[List[Dict[str, object]], Di
 
             frame_index += 1
     finally:
-        pose_landmarker.close()
+        if pose_landmarker is not None:
+            pose_landmarker.close()
         cap.release()
 
     metadata = {

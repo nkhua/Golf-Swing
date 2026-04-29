@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import Skeleton3DViewer from '../components/Skeleton3DViewer';
+import SwingVideoSkeletonOverlay from '../components/SwingVideoSkeletonOverlay';
+import { createSkeletonFrameFromNamedPoseLandmarks } from '../services/model/createSkeletonFrame';
+import { smoothSkeletonFrames } from '../services/model/smoothSkeletonFrames';
 
 const formatMs = (value) => (typeof value === 'number' ? `${value} ms` : 'Unavailable');
 const formatNumber = (value, suffix = '') => (typeof value === 'number' ? `${value}${suffix}` : 'Unavailable');
@@ -11,12 +15,53 @@ export default function ResultsScreen({ route }) {
   const biomechanics = analysis?.biomechanics || {};
   const estimates = analysis?.ballFlightEstimates || {};
   const privacy = analysis?.privacy || {};
+  const skeletonBuild = useMemo(() => {
+    if (!analysis?.poseFrames?.length) {
+      return { frames: [], error: null };
+    }
+
+    try {
+      const frames = smoothSkeletonFrames(
+        analysis.poseFrames.map((poseFrame) =>
+          createSkeletonFrameFromNamedPoseLandmarks(
+            poseFrame.landmarks || [],
+            poseFrame.frameIndex,
+            poseFrame.timestampMs
+          )
+        )
+      );
+      return { frames, error: null };
+    } catch {
+      return { frames: [], error: 'Pose frames were received, but required body landmarks were missing.' };
+    }
+  }, [analysis?.poseFrames]);
+  const skeletonFrames = skeletonBuild.frames;
+  const poseSource =
+    analysis?.source === 'server' && privacy.rawVideoUploaded
+      ? 'Real video processed by backend MediaPipe'
+      : analysis?.source === 'on_device'
+        ? 'On-device or mock pose frames'
+        : 'Unavailable';
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Swing Analysis</Text>
       {analysis ? (
         <View style={styles.content}>
+          {analysis.localVideoUri && analysis.poseFrames?.length ? (
+            <View style={styles.card}>
+              <Text style={styles.subheading}>Video Skeleton Overlay</Text>
+              <SwingVideoSkeletonOverlay
+                videoUri={analysis.localVideoUri}
+                poseFrames={analysis.poseFrames}
+                videoMetadata={analysis.videoMetadata}
+              />
+              <Text style={styles.note}>
+                Overlay uses MediaPipe image landmarks from the analyzed frames.
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.card}>
             <Text style={styles.subheading}>Source</Text>
             <Text style={styles.metric}>Analyzer: {analysis.source === 'on_device' ? 'On device' : 'Server fallback'}</Text>
@@ -54,9 +99,20 @@ export default function ResultsScreen({ route }) {
 
           <View style={styles.card}>
             <Text style={styles.subheading}>Pose Data</Text>
+            <Text style={styles.metric}>Pose source: {poseSource}</Text>
             <Text style={styles.metric}>Frames with landmarks: {analysis.poseFrames?.length || 0}</Text>
+            <Text style={styles.metric}>Skeleton frames built: {skeletonFrames.length}</Text>
+            <Text style={styles.metric}>Joints per skeleton frame: {skeletonFrames[0] ? Object.keys(skeletonFrames[0].joints).length : 0}</Text>
             <Text style={styles.metric}>Camera angle: {analysis.videoMetadata?.cameraAngle || 'unknown'}</Text>
+            {skeletonBuild.error ? <Text style={styles.note}>{skeletonBuild.error}</Text> : null}
           </View>
+
+          {skeletonFrames.length > 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.subheading}>3D Skeleton</Text>
+              <Skeleton3DViewer frames={skeletonFrames} fps={analysis.videoMetadata?.fps} />
+            </View>
+          ) : null}
         </View>
       ) : (
         <Text style={styles.empty}>No analysis available yet. Record a swing first.</Text>

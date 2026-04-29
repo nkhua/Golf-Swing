@@ -2,7 +2,23 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { OnDeviceSwingAnalyzer } from '../services/analyzers/OnDeviceSwingAnalyzer';
-import { ServerSwingAnalyzer } from '../services/analyzers/ServerSwingAnalyzer';
+import { ServerSwingAnalyzer, getConfiguredBackendUrl } from '../services/analyzers/ServerSwingAnalyzer';
+
+const ANALYSIS_MODE = (process.env.EXPO_PUBLIC_ANALYSIS_MODE || 'server').toLowerCase();
+
+const shouldUseServerFirst = () => ANALYSIS_MODE === 'server';
+
+const getAnalysisModeLabel = () => {
+  if (ANALYSIS_MODE === 'server') {
+    return 'Real video: local MediaPipe backend';
+  }
+
+  if (ANALYSIS_MODE === 'mock') {
+    return 'Mock on-device skeleton';
+  }
+
+  return 'Auto: on-device first, backend fallback';
+};
 
 export default function CaptureScreen({ navigation }) {
   const [hasPermission, setHasPermission] = useState(null);
@@ -10,9 +26,11 @@ export default function CaptureScreen({ navigation }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [pendingVideoUri, setPendingVideoUri] = useState(null);
   const [fallbackMessage, setFallbackMessage] = useState(null);
+  const [backendStatus, setBackendStatus] = useState(null);
   const cameraRef = useRef(null);
   const onDeviceAnalyzerRef = useRef(new OnDeviceSwingAnalyzer());
   const serverAnalyzerRef = useRef(new ServerSwingAnalyzer());
+  const backendUrl = getConfiguredBackendUrl();
 
   useEffect(() => {
     Camera.requestCameraPermissionsAsync().then(({ status }) => {
@@ -46,6 +64,18 @@ export default function CaptureScreen({ navigation }) {
     setIsAnalyzing(true);
 
     try {
+      if (shouldUseServerFirst()) {
+        if (!backendUrl) {
+          setPendingVideoUri(uri);
+          setFallbackMessage('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND_URL in mobile/.env, restart Expo, then upload this swing.');
+          return;
+        }
+
+        setPendingVideoUri(uri);
+        setFallbackMessage('Real swing video is ready. Upload it to your local backend to build MediaPipe pose frames and the 3D skeleton.');
+        return;
+      }
+
       const onDeviceAnalyzer = onDeviceAnalyzerRef.current;
       const isAvailable = await onDeviceAnalyzer.isAvailable();
 
@@ -63,12 +93,23 @@ export default function CaptureScreen({ navigation }) {
           cameraAngle: 'down_the_line',
         },
       });
-      navigation.navigate('Results', { analysis: result });
+      navigation.navigate('Results', { analysis: { ...result, localVideoUri: uri } });
     } catch (error) {
       setPendingVideoUri(uri);
       setFallbackMessage(error.message);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const checkBackendHealth = async () => {
+    setBackendStatus('Checking backend...');
+
+    try {
+      await serverAnalyzerRef.current.checkHealth();
+      setBackendStatus('Backend reachable');
+    } catch (error) {
+      setBackendStatus(error.message);
     }
   };
 
@@ -81,6 +122,7 @@ export default function CaptureScreen({ navigation }) {
     setFallbackMessage(null);
 
     try {
+      await serverAnalyzerRef.current.checkHealth();
       const result = await serverAnalyzerRef.current.analyzeVideo({
         uri: pendingVideoUri,
         metadata: {
@@ -88,8 +130,9 @@ export default function CaptureScreen({ navigation }) {
         },
         userConsentedToUpload: true,
       });
+      const localVideoUri = pendingVideoUri;
       setPendingVideoUri(null);
-      navigation.navigate('Results', { analysis: result });
+      navigation.navigate('Results', { analysis: { ...result, localVideoUri } });
     } catch (error) {
       Alert.alert('Server analysis failed', error.message);
     } finally {
@@ -117,6 +160,18 @@ export default function CaptureScreen({ navigation }) {
       <View style={styles.instructions}>
         <Text style={styles.heading}>Back-view swing capture</Text>
         <Text style={styles.text}>Position the camera directly behind the player and keep the full body visible.</Text>
+        <View style={styles.statusPanel}>
+          <Text style={styles.statusText}>Analysis: {getAnalysisModeLabel()}</Text>
+          <Text style={styles.statusText}>Backend: {backendUrl || 'Not configured'}</Text>
+          {backendStatus ? <Text style={styles.statusText}>Status: {backendStatus}</Text> : null}
+          <TouchableOpacity
+            style={styles.statusButton}
+            onPress={checkBackendHealth}
+            disabled={isAnalyzing || !backendUrl}
+          >
+            <Text style={styles.statusButtonText}>Check Backend</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <View style={styles.controls}>
         <TouchableOpacity
@@ -165,6 +220,29 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 14,
     color: '#333',
+  },
+  statusPanel: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#eef2f7',
+  },
+  statusText: {
+    marginBottom: 6,
+    fontSize: 13,
+    color: '#253044',
+  },
+  statusButton: {
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#253044',
+  },
+  statusButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   controls: {
     padding: 20,

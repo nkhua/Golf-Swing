@@ -1,6 +1,8 @@
 import { SwingAnalyzer, normalizeSwingPayload } from './SwingAnalyzer';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const HEALTH_TIMEOUT_MS = 5000;
+const UPLOAD_TIMEOUT_MS = 120000;
 
 const resolveBackendUrl = () => {
   if (!BACKEND_URL) {
@@ -10,19 +12,56 @@ const resolveBackendUrl = () => {
   return BACKEND_URL.replace(/\/$/, '');
 };
 
+export const getConfiguredBackendUrl = () => (BACKEND_URL ? BACKEND_URL.replace(/\/$/, '') : null);
+
+const fetchBackend = async (path, options = {}, timeoutMs = HEALTH_TIMEOUT_MS) => {
+  const baseUrl = resolveBackendUrl();
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+
+  try {
+    return await fetch(`${baseUrl}${path}`, {
+      ...options,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Timed out reaching backend at ${baseUrl}. Make sure the API is running and your device is on the same network.`);
+    }
+
+    throw new Error(`Could not reach backend at ${baseUrl}. Make sure uvicorn is running on 0.0.0.0:8000 and your firewall allows the connection.`);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
 export class ServerSwingAnalyzer extends SwingAnalyzer {
   async isAvailable() {
     return Boolean(BACKEND_URL);
   }
 
+  async checkHealth() {
+    const response = await fetchBackend('/health', {}, HEALTH_TIMEOUT_MS);
+
+    if (!response.ok) {
+      throw new Error(`Backend health check failed with status ${response.status}.`);
+    }
+
+    return response.json();
+  }
+
   async submitAnalysisPayload(payload) {
-    const response = await fetch(`${resolveBackendUrl()}/swings/analysis`, {
+    const response = await fetchBackend('/swings/analysis', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
-    });
+    }, UPLOAD_TIMEOUT_MS);
 
     return this.handleResponse(response);
   }
@@ -40,10 +79,10 @@ export class ServerSwingAnalyzer extends SwingAnalyzer {
     });
     formData.append('user_consented_to_upload', userConsentedToUpload ? 'true' : 'false');
 
-    const response = await fetch(`${resolveBackendUrl()}/swings/upload`, {
+    const response = await fetchBackend('/swings/upload', {
       method: 'POST',
       body: formData,
-    });
+    }, UPLOAD_TIMEOUT_MS);
 
     return this.handleResponse(response, {
       source: 'server',

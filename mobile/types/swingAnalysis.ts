@@ -62,6 +62,7 @@ export type BallFlightEstimates = {
 export type SwingAnalysisPayload = {
   swingId: string;
   source: SwingAnalysisSource;
+  localVideoUri?: string;
   videoMetadata: SwingVideoMetadata;
   phases: SwingPhaseTimestamps;
   poseFrames: FramePoseData[];

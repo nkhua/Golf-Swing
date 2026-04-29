@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
+import time
+import warnings
 
 from config import SECRET_KEYS, Settings, settings
 from schemas import SwingAnalysisPayload, dump_model
@@ -55,12 +57,25 @@ def should_store_raw_video(active_settings: Settings = settings) -> bool:
     return active_settings.allow_video_upload and active_settings.store_raw_video
 
 
-def maybe_delete_raw_video(path: Optional[Path], active_settings: Settings = settings) -> None:
+def maybe_delete_raw_video(path: Optional[Path], active_settings: Settings = settings) -> bool:
     if not path or not path.exists():
-        return
+        return False
 
     if active_settings.delete_raw_video_after_analysis or not should_store_raw_video(active_settings):
-        path.unlink(missing_ok=True)
+        for attempt in range(3):
+            try:
+                path.unlink(missing_ok=True)
+                return True
+            except PermissionError:
+                if attempt == 2:
+                    warnings.warn(
+                        f'Could not delete temporary raw video because it is still locked: {path}',
+                        RuntimeWarning,
+                    )
+                    return False
+                time.sleep(0.2)
+
+    return False
 
 
 def build_llm_payload(payload: SwingAnalysisPayload, active_settings: Settings = settings) -> Dict[str, Any]:

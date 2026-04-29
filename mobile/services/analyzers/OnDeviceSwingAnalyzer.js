@@ -1,7 +1,10 @@
 import { Platform } from 'react-native';
 import { SwingAnalyzer, createFallbackVideoMetadata, normalizeSwingPayload } from './SwingAnalyzer';
+import { createMockPoseFrames } from '../model/mockPoseFrames';
 
-const ENABLE_MOCK_ON_DEVICE_ANALYSIS = process.env.EXPO_PUBLIC_ENABLE_MOCK_ON_DEVICE_ANALYSIS === 'true';
+const ANALYSIS_MODE = (process.env.EXPO_PUBLIC_ANALYSIS_MODE || '').toLowerCase();
+const ENABLE_MOCK_ON_DEVICE_ANALYSIS =
+  process.env.EXPO_PUBLIC_ENABLE_MOCK_ON_DEVICE_ANALYSIS === 'true' || ANALYSIS_MODE === 'mock';
 
 export class OnDeviceSwingAnalyzer extends SwingAnalyzer {
   async isAvailable() {
@@ -34,18 +37,7 @@ export class OnDeviceSwingAnalyzer extends SwingAnalyzer {
           impact: 1250,
           finish: 1800,
         },
-        poseFrames: [
-          {
-            frameIndex: 0,
-            timestampMs: 0,
-            landmarks: [
-              { name: 'LEFT_SHOULDER', x: 0.42, y: 0.32, z: -0.02, visibility: 0.92 },
-              { name: 'RIGHT_SHOULDER', x: 0.58, y: 0.33, z: -0.01, visibility: 0.92 },
-              { name: 'LEFT_HIP', x: 0.44, y: 0.55, z: 0, visibility: 0.9 },
-              { name: 'RIGHT_HIP', x: 0.56, y: 0.55, z: 0, visibility: 0.9 },
-            ],
-          },
-        ],
+        poseFrames: createMockPoseFrames(),
         biomechanics: {
           backswingTimeMs: 900,
           downswingTimeMs: 350,

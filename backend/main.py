@@ -66,7 +66,11 @@ async def _process_uploaded_swing(video: UploadFile, user_consented_to_upload: b
                     raise HTTPException(status_code=413, detail='Video file is too large. Limit uploads to 50 MB.')
                 out_file.write(chunk)
 
-        analysis = await run_in_threadpool(analyze_swing, str(video_path))
+        try:
+            analysis = await run_in_threadpool(analyze_swing, str(video_path))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f'Swing analysis failed: {exc}') from exc
+
         payload = SwingAnalysisPayload(**analysis)
         payload.privacy.rawVideoUploaded = True
         payload.privacy.userConsentedToUpload = user_consented_to_upload

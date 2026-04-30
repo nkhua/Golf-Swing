@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { SwingAnalyzer, createFallbackVideoMetadata, normalizeSwingPayload } from './SwingAnalyzer';
-import { createMockPoseFrames } from '../model/mockPoseFrames';
+import { createMockPoseFrames, createMockTrackingFrames } from '../model/mockPoseFrames';
 
 const ANALYSIS_MODE = (process.env.EXPO_PUBLIC_ANALYSIS_MODE || '').toLowerCase();
 const ENABLE_MOCK_ON_DEVICE_ANALYSIS =
@@ -38,6 +38,14 @@ export class OnDeviceSwingAnalyzer extends SwingAnalyzer {
           finish: 1800,
         },
         poseFrames: createMockPoseFrames(),
+        trackingFrames: createMockTrackingFrames(),
+        trackingSummary: {
+          framesTracked: 4,
+          wristFrameCount: 4,
+          clubFrameCount: 4,
+          averageClubConfidence: 0.72,
+          clubDetectionMethod: 'hough_line_near_hands',
+        },
         biomechanics: {
           backswingTimeMs: 900,
           downswingTimeMs: 350,

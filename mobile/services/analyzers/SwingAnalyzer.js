@@ -29,8 +29,11 @@ export const normalizeSwingPayload = (payload, defaults = {}) => ({
     ...createFallbackVideoMetadata(defaults.videoMetadata),
     ...(payload?.videoMetadata || {}),
   },
+  swingWindow: payload?.swingWindow || defaults.swingWindow,
   phases: payload?.phases || {},
   poseFrames: payload?.poseFrames || [],
+  trackingFrames: payload?.trackingFrames || [],
+  trackingSummary: payload?.trackingSummary || defaults.trackingSummary,
   biomechanics: payload?.biomechanics || {},
   ballFlightEstimates: payload?.ballFlightEstimates,
   privacy: {

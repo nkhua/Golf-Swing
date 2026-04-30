@@ -24,6 +24,10 @@ describe('ResultsScreen', () => {
     );
     expect(onDevice.getByText('Analyzer: On device')).toBeTruthy();
     expect(onDevice.getByText('Raw video uploaded: No')).toBeTruthy();
+    expect(onDevice.getByText('Frames sent to LLM: No')).toBeTruthy();
+    expect(onDevice.getByText('Swing Cut')).toBeTruthy();
+    expect(onDevice.getByText('Wrist and Club Tracking')).toBeTruthy();
+    expect(onDevice.getByText('Club frames: 4')).toBeTruthy();
 
     const server = render(
       <ResultsScreen route={{ params: { analysis: createMockSwingAnalysisPayload('server') } }} />

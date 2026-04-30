@@ -45,3 +45,53 @@ export const createMockPoseFrames = () => [
     landmarks: toLandmarks({ x: 0.01, y: 0.018, z: 0.01 }),
   },
 ];
+
+export const createMockTrackingFrames = () =>
+  createMockPoseFrames().map((poseFrame, index) => {
+    const leftWrist = poseFrame.landmarks.find((landmark) => landmark.name === 'LEFT_WRIST');
+    const rightWrist = poseFrame.landmarks.find((landmark) => landmark.name === 'RIGHT_WRIST');
+    const grip = {
+      x: (leftWrist.x + rightWrist.x) / 2,
+      y: (leftWrist.y + rightWrist.y) / 2,
+      z: (leftWrist.z + rightWrist.z) / 2,
+      confidence: 0.92,
+      source: 'pose_midpoint',
+    };
+    const clubHead = {
+      x: Math.min(0.96, grip.x + 0.14 + index * 0.035),
+      y: Math.max(0.05, grip.y - 0.18 - index * 0.025),
+      confidence: 0.72,
+      source: index === 2 ? 'temporal_prediction' : 'vision_line',
+    };
+    const dx = clubHead.x - grip.x;
+    const dy = clubHead.y - grip.y;
+
+    return {
+      frameIndex: poseFrame.frameIndex,
+      timestampMs: poseFrame.timestampMs,
+      leftWrist: {
+        x: leftWrist.x,
+        y: leftWrist.y,
+        z: leftWrist.z,
+        confidence: 0.92,
+        source: 'pose_landmark',
+      },
+      rightWrist: {
+        x: rightWrist.x,
+        y: rightWrist.y,
+        z: rightWrist.z,
+        confidence: 0.92,
+        source: 'pose_landmark',
+      },
+      grip,
+      clubHead,
+      clubShaft: {
+        start: grip,
+        end: clubHead,
+        confidence: Math.min(grip.confidence, clubHead.confidence),
+        angleDegrees: Math.atan2(dy, dx) * (180 / Math.PI),
+        lengthPx: Math.sqrt(dx * dx + dy * dy) * 1080,
+        source: clubHead.source,
+      },
+    };
+  });

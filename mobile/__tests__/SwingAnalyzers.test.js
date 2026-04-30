@@ -9,9 +9,18 @@ describe('mock swing analyzers', () => {
       expect(result.swingId).toBeTruthy();
       expect(result.videoMetadata.cameraAngle).toBe('down_the_line');
       expect(Array.isArray(result.poseFrames)).toBe(true);
+      expect(Array.isArray(result.trackingFrames)).toBe(true);
+      expect(result.trackingFrames[0]).toHaveProperty('clubHead');
+      expect(result.trackingSummary).toHaveProperty('clubFrameCount');
       expect(result.biomechanics).toHaveProperty('tempoRatio');
+      expect(result.swingWindow).toMatchObject({
+        startMs: 250,
+        endMs: 2100,
+        method: 'pose_motion',
+      });
       expect(result.privacy).toHaveProperty('rawVideoUploaded');
       expect(result.privacy).toHaveProperty('userConsentedToUpload');
+      expect(result.privacy).toHaveProperty('videoFramesSentToLlm');
     }
 
     expect(onDeviceResult.source).toBe('on_device');

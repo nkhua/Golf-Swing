@@ -25,12 +25,67 @@ export type FramePoseData = {
   landmarks: PoseLandmark[];
 };
 
+export type TrackingPointSource = 'pose_landmark' | 'pose_midpoint' | 'vision_line' | 'temporal_prediction';
+
+export type TrackedPoint = {
+  x: number;
+  y: number;
+  z?: number;
+  confidence: number;
+  source: TrackingPointSource;
+};
+
+export type TrackedLine = {
+  start: TrackedPoint;
+  end: TrackedPoint;
+  confidence: number;
+  angleDegrees?: number;
+  lengthPx?: number;
+  source: TrackingPointSource;
+};
+
+export type FrameTrackingData = {
+  frameIndex: number;
+  timestampMs: number;
+  leftWrist?: TrackedPoint;
+  rightWrist?: TrackedPoint;
+  grip?: TrackedPoint;
+  clubHead?: TrackedPoint;
+  clubShaft?: TrackedLine;
+};
+
+export type SwingTrackingSummary = {
+  framesTracked: number;
+  wristFrameCount: number;
+  clubFrameCount: number;
+  averageClubConfidence: number;
+  leftWristPathLengthPx?: number;
+  rightWristPathLengthPx?: number;
+  gripPathLengthPx?: number;
+  clubHeadPathLengthPx?: number;
+  maxGripSpeedPxPerSec?: number;
+  maxClubHeadSpeedPxPerSec?: number;
+  estimatedImpactMs?: number;
+  clubDetectionMethod?: string;
+  notes?: string;
+};
+
 export type SwingPhaseTimestamps = {
   address?: number;
   takeaway?: number;
   topOfBackswing?: number;
   impact?: number;
   finish?: number;
+};
+
+export type SwingTrimWindow = {
+  startMs: number;
+  endMs: number;
+  startFrameIndex: number;
+  endFrameIndex: number;
+  method: 'pose_motion' | 'pose_motion_short_clip' | 'llm_vision' | 'fallback_full_video';
+  confidence: number;
+  notes?: string;
 };
 
 export type SwingBiomechanicsMetrics = {
@@ -64,12 +119,16 @@ export type SwingAnalysisPayload = {
   source: SwingAnalysisSource;
   localVideoUri?: string;
   videoMetadata: SwingVideoMetadata;
+  swingWindow?: SwingTrimWindow;
   phases: SwingPhaseTimestamps;
   poseFrames: FramePoseData[];
+  trackingFrames: FrameTrackingData[];
+  trackingSummary?: SwingTrackingSummary;
   biomechanics: SwingBiomechanicsMetrics;
   ballFlightEstimates?: BallFlightEstimates;
   privacy: {
     rawVideoUploaded: boolean;
     userConsentedToUpload: boolean;
+    videoFramesSentToLlm?: boolean;
   };
 };

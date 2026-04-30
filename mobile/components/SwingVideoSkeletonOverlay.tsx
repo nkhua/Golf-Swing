@@ -3,13 +3,21 @@ import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
-import type { FramePoseData, SwingVideoMetadata } from '../types/swingAnalysis';
+import type {
+  FramePoseData,
+  FrameTrackingData,
+  SwingTrimWindow,
+  SwingVideoMetadata,
+  TrackedPoint,
+} from '../types/swingAnalysis';
 import { normalizePlaybackFps } from '../services/model/skeletonPlayback';
 
 type SwingVideoSkeletonOverlayProps = {
   videoUri: string;
   poseFrames: FramePoseData[];
+  trackingFrames?: FrameTrackingData[];
   videoMetadata?: Partial<SwingVideoMetadata>;
+  swingWindow?: Partial<SwingTrimWindow>;
 };
 
 type OverlaySize = {
@@ -66,6 +74,25 @@ export const getNearestPoseFrameIndex = (poseFrames: FramePoseData[], currentTim
   return nearestIndex;
 };
 
+export const getNearestTrackingFrameIndex = (trackingFrames: FrameTrackingData[], currentTimeMs: number) => {
+  if (!trackingFrames.length) {
+    return 0;
+  }
+
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < trackingFrames.length; index += 1) {
+    const distance = Math.abs((trackingFrames[index].timestampMs || 0) - currentTimeMs);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+
+  return nearestIndex;
+};
+
 export const getVideoAspectRatio = (metadata?: Partial<SwingVideoMetadata>) => {
   const width = Number(metadata?.width || 0);
   const height = Number(metadata?.height || 0);
@@ -79,9 +106,11 @@ export const getVideoAspectRatio = (metadata?: Partial<SwingVideoMetadata>) => {
 
 function PoseOverlay({
   frame,
+  trackingFrame,
   overlaySize,
 }: {
   frame?: FramePoseData;
+  trackingFrame?: FrameTrackingData;
   overlaySize: OverlaySize;
 }) {
   const landmarksByName = useMemo(() => {
@@ -150,31 +179,161 @@ function PoseOverlay({
           ]}
         />
       ))}
+      <TrackingOverlay frame={trackingFrame} overlaySize={overlaySize} />
     </View>
+  );
+}
+
+function TrackingOverlay({
+  frame,
+  overlaySize,
+}: {
+  frame?: FrameTrackingData;
+  overlaySize: OverlaySize;
+}) {
+  if (!frame || overlaySize.width <= 1 || overlaySize.height <= 1) {
+    return null;
+  }
+
+  const shaftStart = frame.clubShaft?.start || frame.grip;
+  const shaftEnd = frame.clubShaft?.end || frame.clubHead;
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill} testID="tracking-overlay-layer">
+      {shaftStart && shaftEnd ? (
+        <TrackingLine
+          from={shaftStart}
+          to={shaftEnd}
+          overlaySize={overlaySize}
+          testID="tracking-overlay-club-shaft"
+        />
+      ) : null}
+      <TrackingPoint point={frame.leftWrist} overlaySize={overlaySize} variant="wrist" testID="tracking-overlay-wrist" />
+      <TrackingPoint point={frame.rightWrist} overlaySize={overlaySize} variant="wrist" testID="tracking-overlay-wrist" />
+      <TrackingPoint point={frame.grip} overlaySize={overlaySize} variant="grip" testID="tracking-overlay-grip" />
+      <TrackingPoint point={frame.clubHead} overlaySize={overlaySize} variant="clubHead" testID="tracking-overlay-club-head" />
+    </View>
+  );
+}
+
+function TrackingLine({
+  from,
+  to,
+  overlaySize,
+  testID,
+}: {
+  from: TrackedPoint;
+  to: TrackedPoint;
+  overlaySize: OverlaySize;
+  testID: string;
+}) {
+  const fromX = from.x * overlaySize.width;
+  const fromY = from.y * overlaySize.height;
+  const toX = to.x * overlaySize.width;
+  const toY = to.y * overlaySize.height;
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx);
+  const opacity = clamp(Math.min(from.confidence ?? 0, to.confidence ?? 0), 0.2, 0.95);
+
+  return (
+    <View
+      testID={testID}
+      style={[
+        styles.trackingClubShaft,
+        {
+          left: fromX + dx / 2 - length / 2,
+          top: fromY + dy / 2 - 1.5,
+          width: length,
+          opacity,
+          transform: [{ rotateZ: `${angle}rad` }],
+        },
+      ]}
+    />
+  );
+}
+
+function TrackingPoint({
+  point,
+  overlaySize,
+  variant,
+  testID,
+}: {
+  point?: TrackedPoint;
+  overlaySize: OverlaySize;
+  variant: 'wrist' | 'grip' | 'clubHead';
+  testID: string;
+}) {
+  if (!point) {
+    return null;
+  }
+
+  const size = variant === 'clubHead' ? 12 : variant === 'grip' ? 9 : 10;
+  const style =
+    variant === 'clubHead'
+      ? styles.trackingClubHead
+      : variant === 'grip'
+        ? styles.trackingGrip
+        : styles.trackingWrist;
+
+  return (
+    <View
+      testID={testID}
+      style={[
+        styles.trackingPoint,
+        style,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          left: point.x * overlaySize.width - size / 2,
+          top: point.y * overlaySize.height - size / 2,
+          opacity: clamp(point.confidence ?? 0, 0.25, 1),
+        },
+      ]}
+    />
   );
 }
 
 export default function SwingVideoSkeletonOverlay({
   videoUri,
   poseFrames,
+  trackingFrames = [],
   videoMetadata,
+  swingWindow,
 }: SwingVideoSkeletonOverlayProps) {
   const [overlaySize, setOverlaySize] = useState<OverlaySize>({ width: 1, height: 1 });
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const safeFps = normalizePlaybackFps(videoMetadata?.fps);
   const aspectRatio = getVideoAspectRatio(videoMetadata);
+  const trimStartMs = Math.max(0, Number(swingWindow?.startMs || 0));
+  const trimEndMs = Math.max(trimStartMs, Number(swingWindow?.endMs || videoMetadata?.durationMs || 0));
+  const hasTrimWindow = trimEndMs > trimStartMs;
   const currentFrameIndex = getNearestPoseFrameIndex(poseFrames, currentTimeMs);
+  const currentTrackingFrameIndex = getNearestTrackingFrameIndex(trackingFrames, currentTimeMs);
   const currentFrame = poseFrames[currentFrameIndex];
+  const currentTrackingFrame = trackingFrames[currentTrackingFrameIndex];
   const frameCount = poseFrames.length;
   const player = useVideoPlayer({ uri: videoUri }, (videoPlayer) => {
     videoPlayer.loop = true;
     videoPlayer.muted = true;
     videoPlayer.timeUpdateEventInterval = 1 / safeFps;
+    if (hasTrimWindow) {
+      videoPlayer.currentTime = trimStartMs / 1000;
+    }
   });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
 
   useEventListener(player, 'timeUpdate', ({ currentTime }) => {
-    setCurrentTimeMs(currentTime * 1000);
+    const nextTimeMs = currentTime * 1000;
+    if (hasTrimWindow && nextTimeMs >= trimEndMs) {
+      player.currentTime = trimStartMs / 1000;
+      setCurrentTimeMs(trimStartMs);
+      return;
+    }
+
+    setCurrentTimeMs(nextTimeMs);
   });
 
   const handleOverlayLayout = (event: LayoutChangeEvent) => {
@@ -191,12 +350,16 @@ export default function SwingVideoSkeletonOverlay({
       return;
     }
 
+    if (hasTrimWindow && (currentTimeMs < trimStartMs || currentTimeMs >= trimEndMs)) {
+      player.currentTime = trimStartMs / 1000;
+      setCurrentTimeMs(trimStartMs);
+    }
     player.play();
   };
 
   const restart = () => {
-    player.currentTime = 0;
-    setCurrentTimeMs(0);
+    player.currentTime = hasTrimWindow ? trimStartMs / 1000 : 0;
+    setCurrentTimeMs(hasTrimWindow ? trimStartMs : 0);
   };
 
   return (
@@ -216,7 +379,7 @@ export default function SwingVideoSkeletonOverlay({
           surfaceType="textureView"
           style={StyleSheet.absoluteFill}
         />
-        <PoseOverlay frame={currentFrame} overlaySize={overlaySize} />
+        <PoseOverlay frame={currentFrame} trackingFrame={currentTrackingFrame} overlaySize={overlaySize} />
         <View pointerEvents="none" style={styles.frameBadge}>
           <Text style={styles.frameBadgeText}>
             {frameCount ? currentFrameIndex + 1 : 0}/{frameCount}
@@ -241,7 +404,9 @@ export default function SwingVideoSkeletonOverlay({
         >
           <Text style={styles.secondaryButtonText}>Restart</Text>
         </Pressable>
-        <Text style={styles.timeLabel}>{Math.round(currentTimeMs)} ms</Text>
+        <Text style={styles.timeLabel}>
+          {Math.round(currentTimeMs)} ms{hasTrimWindow ? ` / ${Math.round(trimStartMs)}-${Math.round(trimEndMs)} ms` : ''}
+        </Text>
       </View>
     </View>
   );
@@ -273,6 +438,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2f2f7',
     borderWidth: 1,
     borderColor: '#34c759',
+  },
+  trackingClubShaft: {
+    position: 'absolute',
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#ffd60a',
+  },
+  trackingPoint: {
+    position: 'absolute',
+    borderWidth: 2,
+  },
+  trackingWrist: {
+    backgroundColor: 'rgba(10, 132, 255, 0.82)',
+    borderColor: '#f2f2f7',
+  },
+  trackingGrip: {
+    backgroundColor: '#ff375f',
+    borderColor: '#fff',
+  },
+  trackingClubHead: {
+    backgroundColor: '#ffd60a',
+    borderColor: '#1c1c1e',
   },
   frameBadge: {
     position: 'absolute',

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 CameraAngle = Literal['down_the_line', 'face_on', 'unknown']
 AnalysisSource = Literal['on_device', 'server']
+TrackingPointSource = Literal['pose_landmark', 'pose_midpoint', 'vision_line', 'temporal_prediction']
 
 
 def dump_model(model: BaseModel, **kwargs) -> Dict:
@@ -36,12 +37,65 @@ class FramePoseData(BaseModel):
     landmarks: List[PoseLandmark] = Field(default_factory=list)
 
 
+class TrackedPoint(BaseModel):
+    x: float
+    y: float
+    z: Optional[float] = None
+    confidence: float = 0
+    source: TrackingPointSource
+
+
+class TrackedLine(BaseModel):
+    start: TrackedPoint
+    end: TrackedPoint
+    confidence: float = 0
+    angleDegrees: Optional[float] = None
+    lengthPx: Optional[float] = None
+    source: TrackingPointSource
+
+
+class FrameTrackingData(BaseModel):
+    frameIndex: int
+    timestampMs: int
+    leftWrist: Optional[TrackedPoint] = None
+    rightWrist: Optional[TrackedPoint] = None
+    grip: Optional[TrackedPoint] = None
+    clubHead: Optional[TrackedPoint] = None
+    clubShaft: Optional[TrackedLine] = None
+
+
+class SwingTrackingSummary(BaseModel):
+    framesTracked: int = 0
+    wristFrameCount: int = 0
+    clubFrameCount: int = 0
+    averageClubConfidence: float = 0
+    leftWristPathLengthPx: Optional[float] = None
+    rightWristPathLengthPx: Optional[float] = None
+    gripPathLengthPx: Optional[float] = None
+    clubHeadPathLengthPx: Optional[float] = None
+    maxGripSpeedPxPerSec: Optional[float] = None
+    maxClubHeadSpeedPxPerSec: Optional[float] = None
+    estimatedImpactMs: Optional[int] = None
+    clubDetectionMethod: str = 'hough_line_near_hands'
+    notes: Optional[str] = None
+
+
 class SwingPhaseTimestamps(BaseModel):
     address: Optional[int] = None
     takeaway: Optional[int] = None
     topOfBackswing: Optional[int] = None
     impact: Optional[int] = None
     finish: Optional[int] = None
+
+
+class SwingTrimWindow(BaseModel):
+    startMs: int = 0
+    endMs: int = 0
+    startFrameIndex: int = 0
+    endFrameIndex: int = 0
+    method: Literal['pose_motion', 'pose_motion_short_clip', 'llm_vision', 'fallback_full_video'] = 'fallback_full_video'
+    confidence: float = 0
+    notes: Optional[str] = None
 
 
 class SwingBiomechanicsMetrics(BaseModel):
@@ -71,14 +125,18 @@ class BallFlightEstimates(BaseModel):
 class SwingPrivacyFlags(BaseModel):
     rawVideoUploaded: bool = False
     userConsentedToUpload: bool = False
+    videoFramesSentToLlm: bool = False
 
 
 class SwingAnalysisPayload(BaseModel):
     swingId: str
     source: AnalysisSource
     videoMetadata: SwingVideoMetadata = Field(default_factory=SwingVideoMetadata)
+    swingWindow: Optional[SwingTrimWindow] = None
     phases: SwingPhaseTimestamps = Field(default_factory=SwingPhaseTimestamps)
     poseFrames: List[FramePoseData] = Field(default_factory=list)
+    trackingFrames: List[FrameTrackingData] = Field(default_factory=list)
+    trackingSummary: SwingTrackingSummary = Field(default_factory=SwingTrackingSummary)
     biomechanics: SwingBiomechanicsMetrics = Field(default_factory=SwingBiomechanicsMetrics)
     ballFlightEstimates: Optional[BallFlightEstimates] = None
     privacy: SwingPrivacyFlags = Field(default_factory=SwingPrivacyFlags)
@@ -98,4 +156,6 @@ class StoredAnalysisResult(BaseModel):
     phases: Dict
     metricsJson: Dict
     poseJson: List[Dict]
+    trackingJson: List[Dict] = Field(default_factory=list)
+    trackingSummaryJson: Dict = Field(default_factory=dict)
     estimatesJson: Optional[Dict] = None

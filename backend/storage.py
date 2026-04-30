@@ -24,6 +24,8 @@ class SwingRepository:
             phases=dump_model(payload.phases),
             metricsJson=dump_model(payload.biomechanics, exclude_none=True),
             poseJson=[dump_model(frame, exclude_none=True) for frame in payload.poseFrames],
+            trackingJson=[dump_model(frame, exclude_none=True) for frame in payload.trackingFrames],
+            trackingSummaryJson=dump_model(payload.trackingSummary, exclude_none=True),
             estimatesJson=dump_model(payload.ballFlightEstimates, exclude_none=True)
             if payload.ballFlightEstimates
             else None,

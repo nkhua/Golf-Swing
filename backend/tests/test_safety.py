@@ -57,6 +57,22 @@ def make_payload():
                 'landmarks': [{'name': 'LEFT_SHOULDER', 'x': 0.4, 'y': 0.3}],
             }
         ],
+        trackingFrames=[
+            {
+                'frameIndex': 0,
+                'timestampMs': 0,
+                'leftWrist': {'x': 0.45, 'y': 0.62, 'confidence': 0.9, 'source': 'pose_landmark'},
+                'rightWrist': {'x': 0.55, 'y': 0.62, 'confidence': 0.9, 'source': 'pose_landmark'},
+                'grip': {'x': 0.5, 'y': 0.62, 'confidence': 0.9, 'source': 'pose_midpoint'},
+                'clubHead': {'x': 0.72, 'y': 0.44, 'confidence': 0.7, 'source': 'vision_line'},
+            }
+        ],
+        trackingSummary={
+            'framesTracked': 1,
+            'wristFrameCount': 1,
+            'clubFrameCount': 1,
+            'averageClubConfidence': 0.7,
+        },
         biomechanics={'tempoRatio': 2.7, 'confidence': 0.5},
         privacy={'rawVideoUploaded': False, 'userConsentedToUpload': False},
     )
@@ -120,8 +136,22 @@ class SafetyTests(unittest.TestCase):
         settings = make_settings()
         payload = build_llm_payload(make_payload(), active_settings=settings)
         self.assertNotIn('poseFrames', payload)
+        self.assertNotIn('trackingFrames', payload)
+        self.assertIn('trackingSummary', payload)
         self.assertIn('biomechanics', payload)
         self.assertIn('videoMetadata', payload)
+
+    def test_llm_payload_can_include_pose_and_tracking_points_when_enabled(self):
+        settings = make_settings(
+            SEND_POSE_DATA_TO_LLM='true',
+            SEND_ONLY_SUMMARIZED_METRICS_TO_LLM='false',
+        )
+
+        payload = build_llm_payload(make_payload(), active_settings=settings)
+
+        self.assertIn('poseFrames', payload)
+        self.assertIn('trackingFrames', payload)
+        self.assertEqual(payload['trackingFrames'][0]['clubHead']['source'], 'vision_line')
 
 
 if __name__ == '__main__':

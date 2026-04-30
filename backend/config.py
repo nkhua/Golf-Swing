@@ -27,6 +27,8 @@ KNOWN_ENV_KEYS = {
     'SEND_VIDEO_TO_LLM',
     'SEND_POSE_DATA_TO_LLM',
     'SEND_ONLY_SUMMARIZED_METRICS_TO_LLM',
+    'LLM_SWING_TRIM_MODEL',
+    'LLM_SWING_TRIM_MAX_FRAMES',
     *SECRET_KEYS,
 }
 
@@ -119,6 +121,8 @@ class Settings:
     send_video_to_llm: bool
     send_pose_data_to_llm: bool
     send_only_summarized_metrics_to_llm: bool
+    llm_swing_trim_model: str
+    llm_swing_trim_max_frames: int
     openai_api_key: str
     database_url: str
     storage_bucket: str
@@ -147,6 +151,8 @@ class Settings:
             send_video_to_llm=_bool_value(values, 'SEND_VIDEO_TO_LLM', False),
             send_pose_data_to_llm=_bool_value(values, 'SEND_POSE_DATA_TO_LLM', False),
             send_only_summarized_metrics_to_llm=_bool_value(values, 'SEND_ONLY_SUMMARIZED_METRICS_TO_LLM', True),
+            llm_swing_trim_model=_str_value(values, 'LLM_SWING_TRIM_MODEL', 'gpt-4.1-mini'),
+            llm_swing_trim_max_frames=_int_value(values, 'LLM_SWING_TRIM_MAX_FRAMES', 12),
             openai_api_key=_str_value(values, 'OPENAI_API_KEY'),
             database_url=_str_value(values, 'DATABASE_URL'),
             storage_bucket=_str_value(values, 'STORAGE_BUCKET'),
@@ -162,6 +168,8 @@ class Settings:
     def validate(self) -> None:
         if self.backend_port <= 0 or self.backend_port > 65535:
             raise ConfigError('BACKEND_PORT must be between 1 and 65535.')
+        if self.llm_swing_trim_max_frames < 2 or self.llm_swing_trim_max_frames > 24:
+            raise ConfigError('LLM_SWING_TRIM_MAX_FRAMES must be between 2 and 24.')
 
         if self.is_production:
             if self.debug:

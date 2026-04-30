@@ -2,7 +2,7 @@ import { SwingAnalyzer, normalizeSwingPayload } from './SwingAnalyzer';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const HEALTH_TIMEOUT_MS = 5000;
-const UPLOAD_TIMEOUT_MS = 120000;
+const UPLOAD_TIMEOUT_MS = 240000;
 
 const resolveBackendUrl = () => {
   if (!BACKEND_URL) {
@@ -28,7 +28,7 @@ const fetchBackend = async (path, options = {}, timeoutMs = HEALTH_TIMEOUT_MS) =
     });
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new Error(`Timed out reaching backend at ${baseUrl}. Make sure the API is running and your device is on the same network.`);
+      throw new Error(`Timed out waiting for backend analysis at ${baseUrl}. The API may still be processing the video; check the backend terminal for the latest swing analysis stage timing.`);
     }
 
     throw new Error(`Could not reach backend at ${baseUrl}. Make sure uvicorn is running on 0.0.0.0:8000 and your firewall allows the connection.`);

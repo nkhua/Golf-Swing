@@ -1,6 +1,7 @@
 from datetime import datetime
 from math import atan2, degrees
 from pathlib import Path
+from time import perf_counter
 from typing import Dict, List, Optional, Tuple
 import urllib.request
 from uuid import uuid4
@@ -12,10 +13,15 @@ from mediapipe.tasks.python.core import base_options
 from mediapipe.tasks.python.vision.core import image as mp_image
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 
+from config import settings
+from services.club_tracking import extract_swing_tracking
+from services.swing_trim import apply_swing_window, estimate_swing_window_from_pose, refine_swing_window_with_llm
+
 MODEL_URL = 'https://storage.googleapis.com/mediapipe-tasks/pose_landmarker/pose_landmarker_full.task'
 MODEL_PATH = Path(__file__).resolve().parent.parent / 'models' / 'pose_landmarker_full.task'
 MODEL_PATH.parent.mkdir(exist_ok=True)
 MAX_FRAMES_TO_ANALYZE = 90
+MAX_POSE_IMAGE_SIDE = 720
 
 
 def _download_model_asset() -> None:
@@ -39,6 +45,20 @@ def _create_pose_landmarker() -> vision.PoseLandmarker:
         min_tracking_confidence=0.5,
     )
     return vision.PoseLandmarker.create_from_options(options)
+
+
+def _resize_for_pose(frame: np.ndarray) -> np.ndarray:
+    height, width = frame.shape[:2]
+    max_side = max(width, height)
+    if max_side <= MAX_POSE_IMAGE_SIDE:
+        return frame
+
+    scale = MAX_POSE_IMAGE_SIDE / max_side
+    return cv2.resize(frame, (max(1, int(width * scale)), max(1, int(height * scale))), interpolation=cv2.INTER_AREA)
+
+
+def _log_stage(stage: str, duration_seconds: float) -> None:
+    print(f'Swing analysis stage "{stage}" completed in {duration_seconds:.2f}s')
 
 
 def _angle_between_points(a: Dict[str, float], b: Dict[str, float]) -> float:
@@ -76,6 +96,7 @@ def get_video_metadata(video_path: str) -> Dict[str, object]:
 
 
 def extract_pose_landmarks(video_path: str) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
+    started_at = perf_counter()
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f'Unable to open video: {video_path}')
@@ -101,7 +122,8 @@ def extract_pose_landmarks(video_path: str) -> Tuple[List[Dict[str, object]], Di
                 frame_index += 1
                 continue
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pose_frame = _resize_for_pose(frame)
+            rgb_frame = cv2.cvtColor(pose_frame, cv2.COLOR_BGR2RGB)
             input_image = mp_image.Image(mp_image.ImageFormat.SRGB, np.asarray(rgb_frame))
             results = pose_landmarker.detect(input_image)
 
@@ -128,6 +150,7 @@ def extract_pose_landmarks(video_path: str) -> Tuple[List[Dict[str, object]], Di
         if pose_landmarker is not None:
             pose_landmarker.close()
         cap.release()
+        _log_stage('pose_landmarks', perf_counter() - started_at)
 
     metadata = {
         'fps': fps,
@@ -237,23 +260,54 @@ def compute_swing_metrics(frames: List[Dict[str, object]], metadata: Dict[str, o
 
 
 def analyze_swing(video_path: str) -> dict:
+    started_at = perf_counter()
     frames, metadata = extract_pose_landmarks(video_path)
-    analysis = compute_swing_metrics(frames, metadata)
+    pose_done_at = perf_counter()
+    swing_window, phases = estimate_swing_window_from_pose(frames, metadata)
+    llm_window = refine_swing_window_with_llm(video_path, swing_window, metadata)
+    trim_done_at = perf_counter()
+    if llm_window:
+        swing_window = {**swing_window, **llm_window}
+        if frames:
+            start_frame = next((frame for frame in frames if frame['timestampMs'] >= swing_window['startMs']), frames[0])
+            end_frame = next((frame for frame in reversed(frames) if frame['timestampMs'] <= swing_window['endMs']), frames[-1])
+            swing_window['startFrameIndex'] = start_frame['frameIndex']
+            swing_window['endFrameIndex'] = end_frame['frameIndex']
+            phases = {
+                **phases,
+                'address': swing_window['startMs'],
+                'finish': swing_window['endMs'],
+            }
+
+    trimmed_frames = apply_swing_window(frames, swing_window)
+    tracking_frames, tracking_summary = extract_swing_tracking(video_path, trimmed_frames, metadata)
+    tracking_done_at = perf_counter()
+    analysis = compute_swing_metrics(trimmed_frames, metadata)
+    metrics_done_at = perf_counter()
     legacy_summary = analysis.get('legacySummary', {})
+    video_frames_sent_to_llm = bool(settings.send_video_to_llm and settings.openai_api_key)
     payload = {
         'swingId': uuid4().hex,
         'source': 'server',
         'videoMetadata': metadata,
-        'phases': {},
-        'poseFrames': frames,
+        'swingWindow': swing_window,
+        'phases': phases,
+        'poseFrames': trimmed_frames,
+        'trackingFrames': tracking_frames,
+        'trackingSummary': tracking_summary,
         'biomechanics': analysis['biomechanics'],
         'ballFlightEstimates': analysis.get('ballFlightEstimates'),
         'privacy': {
             'rawVideoUploaded': True,
             'userConsentedToUpload': True,
+            'videoFramesSentToLlm': video_frames_sent_to_llm,
         },
         'analysisTime': datetime.utcnow().isoformat() + 'Z',
-        'framesAnalyzed': len(frames),
+        'framesAnalyzed': len(trimmed_frames),
         **legacy_summary,
     }
+    _log_stage('swing_window_and_llm_refinement', trim_done_at - pose_done_at)
+    _log_stage('wrist_and_club_tracking', tracking_done_at - trim_done_at)
+    _log_stage('metrics', metrics_done_at - tracking_done_at)
+    _log_stage('total', perf_counter() - started_at)
     return payload

@@ -15,6 +15,8 @@ export default function ResultsScreen({ route }) {
   const biomechanics = analysis?.biomechanics || {};
   const estimates = analysis?.ballFlightEstimates || {};
   const privacy = analysis?.privacy || {};
+  const swingWindow = analysis?.swingWindow;
+  const trackingSummary = analysis?.trackingSummary || {};
   const skeletonBuild = useMemo(() => {
     if (!analysis?.poseFrames?.length) {
       return { frames: [], error: null };
@@ -54,10 +56,12 @@ export default function ResultsScreen({ route }) {
               <SwingVideoSkeletonOverlay
                 videoUri={analysis.localVideoUri}
                 poseFrames={analysis.poseFrames}
+                trackingFrames={analysis.trackingFrames}
                 videoMetadata={analysis.videoMetadata}
+                swingWindow={swingWindow}
               />
               <Text style={styles.note}>
-                Overlay uses MediaPipe image landmarks from the analyzed frames.
+                Overlay uses MediaPipe pose landmarks plus tracked wrist, grip, club-head, and shaft points.
               </Text>
             </View>
           ) : null}
@@ -67,7 +71,19 @@ export default function ResultsScreen({ route }) {
             <Text style={styles.metric}>Analyzer: {analysis.source === 'on_device' ? 'On device' : 'Server fallback'}</Text>
             <Text style={styles.metric}>Raw video uploaded: {privacy.rawVideoUploaded ? 'Yes' : 'No'}</Text>
             <Text style={styles.metric}>Upload consent: {privacy.userConsentedToUpload ? 'Yes' : 'No'}</Text>
+            <Text style={styles.metric}>Frames sent to LLM: {privacy.videoFramesSentToLlm ? 'Yes' : 'No'}</Text>
           </View>
+
+          {swingWindow ? (
+            <View style={styles.card}>
+              <Text style={styles.subheading}>Swing Cut</Text>
+              <Text style={styles.metric}>Start: {formatMs(swingWindow.startMs)}</Text>
+              <Text style={styles.metric}>End: {formatMs(swingWindow.endMs)}</Text>
+              <Text style={styles.metric}>Method: {swingWindow.method === 'llm_vision' ? 'LLM vision' : swingWindow.method}</Text>
+              <Text style={styles.metric}>Confidence: {formatNumber(swingWindow.confidence)}</Text>
+              {swingWindow.notes ? <Text style={styles.note}>{swingWindow.notes}</Text> : null}
+            </View>
+          ) : null}
 
           <View style={styles.card}>
             <Text style={styles.subheading}>Measured from Pose</Text>
@@ -82,6 +98,19 @@ export default function ResultsScreen({ route }) {
             <Text style={styles.note}>
               Pose values are early measurements from video landmarks, not final coaching truth.
             </Text>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.subheading}>Wrist and Club Tracking</Text>
+            <Text style={styles.metric}>Tracking frames: {trackingSummary.framesTracked || analysis.trackingFrames?.length || 0}</Text>
+            <Text style={styles.metric}>Wrist frames: {trackingSummary.wristFrameCount || 0}</Text>
+            <Text style={styles.metric}>Club frames: {trackingSummary.clubFrameCount || 0}</Text>
+            <Text style={styles.metric}>Club confidence: {formatNumber(trackingSummary.averageClubConfidence)}</Text>
+            <Text style={styles.metric}>Grip path: {formatNumber(trackingSummary.gripPathLengthPx, ' px')}</Text>
+            <Text style={styles.metric}>Club-head path: {formatNumber(trackingSummary.clubHeadPathLengthPx, ' px')}</Text>
+            <Text style={styles.metric}>Max club speed: {formatNumber(trackingSummary.maxClubHeadSpeedPxPerSec, ' px/s')}</Text>
+            <Text style={styles.metric}>Estimated impact: {formatMs(trackingSummary.estimatedImpactMs)}</Text>
+            {trackingSummary.notes ? <Text style={styles.note}>{trackingSummary.notes}</Text> : null}
           </View>
 
           <View style={styles.card}>
@@ -101,6 +130,7 @@ export default function ResultsScreen({ route }) {
             <Text style={styles.subheading}>Pose Data</Text>
             <Text style={styles.metric}>Pose source: {poseSource}</Text>
             <Text style={styles.metric}>Frames with landmarks: {analysis.poseFrames?.length || 0}</Text>
+            <Text style={styles.metric}>Frames with point tracking: {analysis.trackingFrames?.length || 0}</Text>
             <Text style={styles.metric}>Skeleton frames built: {skeletonFrames.length}</Text>
             <Text style={styles.metric}>Joints per skeleton frame: {skeletonFrames[0] ? Object.keys(skeletonFrames[0].joints).length : 0}</Text>
             <Text style={styles.metric}>Camera angle: {analysis.videoMetadata?.cameraAngle || 'unknown'}</Text>

@@ -38,9 +38,11 @@ def sanitize_log_payload(payload: SwingAnalysisPayload, active_settings: Setting
 
     if active_settings.log_sensitive_data:
         data['biomechanics'] = dump_model(payload.biomechanics, exclude_none=True)
+        data['trackingSummary'] = dump_model(payload.trackingSummary, exclude_none=True)
 
     if active_settings.log_sensitive_data and not active_settings.save_pose_data_only:
         data['poseFrames'] = [dump_model(frame, exclude_none=True) for frame in payload.poseFrames]
+        data['trackingFrames'] = [dump_model(frame, exclude_none=True) for frame in payload.trackingFrames]
 
     return redact_mapping(data)
 
@@ -86,7 +88,9 @@ def build_llm_payload(payload: SwingAnalysisPayload, active_settings: Settings =
         'swingId': payload.swingId,
         'source': payload.source,
         'videoMetadata': dump_model(payload.videoMetadata, exclude_none=True),
+        'swingWindow': dump_model(payload.swingWindow, exclude_none=True) if payload.swingWindow else None,
         'phases': dump_model(payload.phases, exclude_none=True),
+        'trackingSummary': dump_model(payload.trackingSummary, exclude_none=True),
         'biomechanics': dump_model(payload.biomechanics, exclude_none=True),
         'ballFlightEstimates': dump_model(payload.ballFlightEstimates, exclude_none=True)
         if payload.ballFlightEstimates
@@ -95,8 +99,10 @@ def build_llm_payload(payload: SwingAnalysisPayload, active_settings: Settings =
 
     if active_settings.send_pose_data_to_llm:
         llm_payload['poseFrames'] = [dump_model(frame, exclude_none=True) for frame in payload.poseFrames]
+        llm_payload['trackingFrames'] = [dump_model(frame, exclude_none=True) for frame in payload.trackingFrames]
 
     if active_settings.send_only_summarized_metrics_to_llm:
         llm_payload.pop('poseFrames', None)
+        llm_payload.pop('trackingFrames', None)
 
     return {key: value for key, value in llm_payload.items() if value is not None}

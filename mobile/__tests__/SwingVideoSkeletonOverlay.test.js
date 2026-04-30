@@ -1,10 +1,11 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import SwingVideoSkeletonOverlay, {
   getNearestPoseFrameIndex,
+  getNearestTrackingFrameIndex,
   getVideoAspectRatio,
 } from '../components/SwingVideoSkeletonOverlay';
-import { createMockPoseFrames } from '../services/model/mockPoseFrames';
+import { createMockPoseFrames, createMockTrackingFrames } from '../services/model/mockPoseFrames';
 
 let mockLastPlayer;
 const mockUseVideoPlayer = jest.fn((source, setup) => {
@@ -54,6 +55,8 @@ describe('SwingVideoSkeletonOverlay', () => {
     expect(getNearestPoseFrameIndex(frames, 900)).toBe(2);
     expect(getNearestPoseFrameIndex(frames, 1400)).toBe(3);
     expect(getNearestPoseFrameIndex([], 1400)).toBe(0);
+    expect(getNearestTrackingFrameIndex(createMockTrackingFrames(), 900)).toBe(2);
+    expect(getNearestTrackingFrameIndex([], 900)).toBe(0);
     expect(getVideoAspectRatio({ width: 1080, height: 1920 })).toBeCloseTo(9 / 16);
     expect(getVideoAspectRatio({ width: 0, height: 0 })).toBeCloseTo(9 / 16);
   });
@@ -63,6 +66,7 @@ describe('SwingVideoSkeletonOverlay', () => {
       <SwingVideoSkeletonOverlay
         videoUri="file:///local-swing.mp4"
         poseFrames={createMockPoseFrames()}
+        trackingFrames={createMockTrackingFrames()}
         videoMetadata={{ fps: 60, width: 1080, height: 1920 }}
       />
     );
@@ -75,6 +79,11 @@ describe('SwingVideoSkeletonOverlay', () => {
     expect(screen.getByTestId('pose-overlay-layer')).toBeTruthy();
     expect(screen.getAllByTestId('pose-overlay-bone').length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('pose-overlay-joint')).toHaveLength(13);
+    expect(screen.getByTestId('tracking-overlay-layer')).toBeTruthy();
+    expect(screen.getAllByTestId('tracking-overlay-wrist')).toHaveLength(2);
+    expect(screen.getByTestId('tracking-overlay-grip')).toBeTruthy();
+    expect(screen.getByTestId('tracking-overlay-club-head')).toBeTruthy();
+    expect(screen.getByTestId('tracking-overlay-club-shaft')).toBeTruthy();
     expect(mockLastPlayer.source).toEqual({ uri: 'file:///local-swing.mp4' });
     expect(mockLastPlayer.loop).toBe(true);
     expect(mockLastPlayer.muted).toBe(true);
@@ -91,5 +100,25 @@ describe('SwingVideoSkeletonOverlay', () => {
     mockLastPlayer.currentTime = 1.2;
     fireEvent.press(screen.getByText('Restart'));
     expect(mockLastPlayer.currentTime).toBe(0);
+  });
+
+  it('starts, restarts, and loops inside the detected swing window', () => {
+    render(
+      <SwingVideoSkeletonOverlay
+        videoUri="file:///local-swing.mp4"
+        poseFrames={createMockPoseFrames()}
+        trackingFrames={createMockTrackingFrames()}
+        videoMetadata={{ fps: 60, width: 1080, height: 1920, durationMs: 2200 }}
+        swingWindow={{ startMs: 250, endMs: 1500 }}
+      />
+    );
+
+    expect(mockLastPlayer.currentTime).toBeCloseTo(0.25);
+
+    const timeUpdate = mockUseEventListener.mock.calls.find((call) => call[1] === 'timeUpdate')[2];
+    act(() => {
+      timeUpdate({ currentTime: 1.6 });
+    });
+    expect(mockLastPlayer.currentTime).toBeCloseTo(0.25);
   });
 });

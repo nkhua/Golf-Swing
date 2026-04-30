@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import CaptureScreen from './screens/CaptureScreen';
 import ResultsScreen from './screens/ResultsScreen';
 
@@ -21,33 +22,35 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        {screen === 'Results' ? (
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Back to camera"
-            onPress={() => setScreen('Capture')}
-            style={styles.backButton}
-          >
-            <Text style={styles.backButtonText}>Back</Text>
-          </TouchableOpacity>
-        ) : (
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.header}>
+          {screen === 'Results' ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Back to camera"
+              onPress={() => setScreen('Capture')}
+              style={styles.backButton}
+            >
+              <Text style={styles.backButtonText}>Back</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
+          <Text style={styles.headerTitle}>{screen === 'Results' ? 'Analysis Results' : 'Capture Swing'}</Text>
           <View style={styles.headerSpacer} />
-        )}
-        <Text style={styles.headerTitle}>{screen === 'Results' ? 'Analysis Results' : 'Capture Swing'}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+        </View>
 
-      <View style={styles.content}>
-        {screen === 'Results' ? (
-          <ResultsScreen route={{ params: { analysis } }} />
-        ) : (
-          <CaptureScreen navigation={navigation} />
-        )}
-      </View>
-    </SafeAreaView>
+        <View style={styles.content}>
+          {screen === 'Results' ? (
+            <ResultsScreen route={{ params: { analysis } }} />
+          ) : (
+            <CaptureScreen navigation={navigation} />
+          )}
+        </View>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

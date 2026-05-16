@@ -23,6 +23,7 @@ KNOWN_ENV_KEYS = {
     'LOG_SENSITIVE_DATA',
     'STORE_FRAME_IMAGES',
     'STORE_DEBUG_OVERLAYS',
+    'ENABLE_DETAILED_HAND_TRACKING',
     'ANONYMIZE_USER_DATA',
     'SEND_VIDEO_TO_LLM',
     'SEND_POSE_DATA_TO_LLM',
@@ -117,6 +118,7 @@ class Settings:
     log_sensitive_data: bool
     store_frame_images: bool
     store_debug_overlays: bool
+    enable_detailed_hand_tracking: bool
     anonymize_user_data: bool
     send_video_to_llm: bool
     send_pose_data_to_llm: bool
@@ -147,6 +149,7 @@ class Settings:
             log_sensitive_data=_bool_value(values, 'LOG_SENSITIVE_DATA', False),
             store_frame_images=_bool_value(values, 'STORE_FRAME_IMAGES', False),
             store_debug_overlays=_bool_value(values, 'STORE_DEBUG_OVERLAYS', False),
+            enable_detailed_hand_tracking=_bool_value(values, 'ENABLE_DETAILED_HAND_TRACKING', False),
             anonymize_user_data=_bool_value(values, 'ANONYMIZE_USER_DATA', True),
             send_video_to_llm=_bool_value(values, 'SEND_VIDEO_TO_LLM', False),
             send_pose_data_to_llm=_bool_value(values, 'SEND_POSE_DATA_TO_LLM', False),

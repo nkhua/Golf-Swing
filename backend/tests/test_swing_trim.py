@@ -2,7 +2,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from services.swing_trim import apply_swing_window, estimate_swing_window_from_pose, refine_swing_window_with_llm
+from services.swing_trim import (
+    _parse_llm_window,
+    apply_swing_window,
+    estimate_swing_window_from_pose,
+    refine_swing_window_with_llm,
+)
 
 
 def landmark(name, x, y):
@@ -42,9 +47,39 @@ class SwingTrimTests(unittest.TestCase):
         self.assertEqual(window['method'], 'pose_motion')
         self.assertGreaterEqual(window['endMs'], window['startMs'] + 900)
         self.assertGreater(window['confidence'], 0.45)
-        self.assertEqual(phases['address'], window['startMs'])
+        self.assertEqual(phases['address'], window['detectedStartMs'])
         self.assertEqual(phases['finish'], window['endMs'])
         self.assertGreaterEqual(phases['impact'], phases['topOfBackswing'])
+
+    def test_motion_window_includes_two_second_preroll_before_detected_start(self):
+        frames = [
+            pose_frame(0, 0, 0.35),
+            pose_frame(1, 1000, 0.35),
+            pose_frame(2, 2000, 0.35),
+            pose_frame(3, 3000, 0.35),
+            pose_frame(4, 4000, 0.35),
+            pose_frame(5, 5000, 0.48),
+            pose_frame(6, 6000, 0.68),
+            pose_frame(7, 7000, 0.52),
+        ]
+
+        window, phases = estimate_swing_window_from_pose(frames, {'durationMs': 7600})
+
+        self.assertEqual(window['detectedStartMs'], 3000)
+        self.assertEqual(window['startMs'], 1000)
+        self.assertEqual(window['preRollMs'], 2000)
+        self.assertEqual(phases['address'], 3000)
+
+    def test_llm_window_includes_two_second_preroll_before_detected_start(self):
+        window = _parse_llm_window(
+            '{"startMs": 4500, "endMs": 7200, "confidence": 0.8, "notes": "Clean swing."}',
+            9000,
+        )
+
+        self.assertIsNotNone(window)
+        self.assertEqual(window['detectedStartMs'], 4500)
+        self.assertEqual(window['startMs'], 2500)
+        self.assertEqual(window['preRollMs'], 2000)
 
     def test_applies_window_to_pose_frames_without_emptying_data(self):
         frames = [

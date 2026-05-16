@@ -275,12 +275,12 @@ def analyze_swing(video_path: str) -> dict:
             swing_window['endFrameIndex'] = end_frame['frameIndex']
             phases = {
                 **phases,
-                'address': swing_window['startMs'],
+                'address': swing_window.get('detectedStartMs', swing_window['startMs']),
                 'finish': swing_window['endMs'],
             }
 
     trimmed_frames = apply_swing_window(frames, swing_window)
-    tracking_frames, tracking_summary = extract_swing_tracking(video_path, trimmed_frames, metadata)
+    tracking_frames, tracking_summary = extract_swing_tracking(video_path, trimmed_frames, metadata, phases)
     tracking_done_at = perf_counter()
     analysis = compute_swing_metrics(trimmed_frames, metadata)
     metrics_done_at = perf_counter()

@@ -25,7 +25,15 @@ export type FramePoseData = {
   landmarks: PoseLandmark[];
 };
 
-export type TrackingPointSource = 'pose_landmark' | 'pose_midpoint' | 'vision_line' | 'temporal_prediction';
+export type TrackingPointSource =
+  | 'pose_landmark'
+  | 'pose_midpoint'
+  | 'pose_estimate'
+  | 'hand_landmark'
+  | 'face_landmark'
+  | 'vision_line'
+  | 'temporal_prediction'
+  | 'club_proxy';
 
 export type TrackedPoint = {
   x: number;
@@ -49,15 +57,50 @@ export type FrameTrackingData = {
   timestampMs: number;
   leftWrist?: TrackedPoint;
   rightWrist?: TrackedPoint;
+  leftElbow?: TrackedPoint;
+  rightElbow?: TrackedPoint;
+  leftShoulder?: TrackedPoint;
+  rightShoulder?: TrackedPoint;
+  leftHip?: TrackedPoint;
+  rightHip?: TrackedPoint;
+  leftHandWrist?: TrackedPoint;
+  rightHandWrist?: TrackedPoint;
+  leftIndexMcp?: TrackedPoint;
+  rightIndexMcp?: TrackedPoint;
+  leftMiddleMcp?: TrackedPoint;
+  rightMiddleMcp?: TrackedPoint;
+  leftPalmCenter?: TrackedPoint;
+  rightPalmCenter?: TrackedPoint;
+  leftEye?: TrackedPoint;
+  rightEye?: TrackedPoint;
+  nose?: TrackedPoint;
+  chin?: TrackedPoint;
+  headCenter?: TrackedPoint;
   grip?: TrackedPoint;
   clubHead?: TrackedPoint;
   clubShaft?: TrackedLine;
+  shoulderLine?: TrackedLine;
+  hipLine?: TrackedLine;
+  spineLine?: TrackedLine;
+  leftForearmLine?: TrackedLine;
+  rightForearmLine?: TrackedLine;
+  eyeLine?: TrackedLine;
+  headDirection?: TrackedLine;
+  bodyMetrics?: Record<string, number | string | boolean | null | undefined>;
+  handMetrics?: Record<string, number | string | boolean | null | undefined>;
+  headMetrics?: Record<string, number | string | boolean | null | undefined>;
+  clubMetrics?: Record<string, number | string | boolean | null | undefined>;
+  quality?: Record<string, number | string | boolean | null | undefined>;
 };
 
 export type SwingTrackingSummary = {
   framesTracked: number;
   wristFrameCount: number;
   clubFrameCount: number;
+  handFrameCount?: number;
+  faceFrameCount?: number;
+  headFrameCount?: number;
+  bodyFrameCount?: number;
   averageClubConfidence: number;
   leftWristPathLengthPx?: number;
   rightWristPathLengthPx?: number;
@@ -67,6 +110,18 @@ export type SwingTrackingSummary = {
   maxClubHeadSpeedPxPerSec?: number;
   estimatedImpactMs?: number;
   clubDetectionMethod?: string;
+  golfMetrics?: Record<string, number | string | boolean | null | undefined>;
+  quality?: {
+    bodyFrameRatio?: number;
+    handFrameRatio?: number;
+    faceFrameRatio?: number;
+    headFrameRatio?: number;
+    clubFrameRatio?: number;
+    overallTrackingConfidence?: number;
+    needsRetake?: boolean;
+    retakeReasons?: string[];
+  };
+  trackedFeatureSet?: string[];
   notes?: string;
 };
 
@@ -80,9 +135,11 @@ export type SwingPhaseTimestamps = {
 
 export type SwingTrimWindow = {
   startMs: number;
+  detectedStartMs?: number;
   endMs: number;
   startFrameIndex: number;
   endFrameIndex: number;
+  preRollMs?: number;
   method: 'pose_motion' | 'pose_motion_short_clip' | 'llm_vision' | 'fallback_full_video';
   confidence: number;
   notes?: string;

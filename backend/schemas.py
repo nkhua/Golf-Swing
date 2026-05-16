@@ -5,7 +5,16 @@ from pydantic import BaseModel, Field
 
 CameraAngle = Literal['down_the_line', 'face_on', 'unknown']
 AnalysisSource = Literal['on_device', 'server']
-TrackingPointSource = Literal['pose_landmark', 'pose_midpoint', 'vision_line', 'temporal_prediction']
+TrackingPointSource = Literal[
+    'pose_landmark',
+    'pose_midpoint',
+    'pose_estimate',
+    'hand_landmark',
+    'face_landmark',
+    'vision_line',
+    'temporal_prediction',
+    'club_proxy',
+]
 
 
 def dump_model(model: BaseModel, **kwargs) -> Dict:
@@ -59,15 +68,50 @@ class FrameTrackingData(BaseModel):
     timestampMs: int
     leftWrist: Optional[TrackedPoint] = None
     rightWrist: Optional[TrackedPoint] = None
+    leftElbow: Optional[TrackedPoint] = None
+    rightElbow: Optional[TrackedPoint] = None
+    leftShoulder: Optional[TrackedPoint] = None
+    rightShoulder: Optional[TrackedPoint] = None
+    leftHip: Optional[TrackedPoint] = None
+    rightHip: Optional[TrackedPoint] = None
+    leftHandWrist: Optional[TrackedPoint] = None
+    rightHandWrist: Optional[TrackedPoint] = None
+    leftIndexMcp: Optional[TrackedPoint] = None
+    rightIndexMcp: Optional[TrackedPoint] = None
+    leftMiddleMcp: Optional[TrackedPoint] = None
+    rightMiddleMcp: Optional[TrackedPoint] = None
+    leftPalmCenter: Optional[TrackedPoint] = None
+    rightPalmCenter: Optional[TrackedPoint] = None
+    leftEye: Optional[TrackedPoint] = None
+    rightEye: Optional[TrackedPoint] = None
+    nose: Optional[TrackedPoint] = None
+    chin: Optional[TrackedPoint] = None
+    headCenter: Optional[TrackedPoint] = None
     grip: Optional[TrackedPoint] = None
     clubHead: Optional[TrackedPoint] = None
     clubShaft: Optional[TrackedLine] = None
+    shoulderLine: Optional[TrackedLine] = None
+    hipLine: Optional[TrackedLine] = None
+    spineLine: Optional[TrackedLine] = None
+    leftForearmLine: Optional[TrackedLine] = None
+    rightForearmLine: Optional[TrackedLine] = None
+    eyeLine: Optional[TrackedLine] = None
+    headDirection: Optional[TrackedLine] = None
+    bodyMetrics: Dict[str, object] = Field(default_factory=dict)
+    handMetrics: Dict[str, object] = Field(default_factory=dict)
+    headMetrics: Dict[str, object] = Field(default_factory=dict)
+    clubMetrics: Dict[str, object] = Field(default_factory=dict)
+    quality: Dict[str, object] = Field(default_factory=dict)
 
 
 class SwingTrackingSummary(BaseModel):
     framesTracked: int = 0
     wristFrameCount: int = 0
     clubFrameCount: int = 0
+    handFrameCount: int = 0
+    faceFrameCount: int = 0
+    headFrameCount: int = 0
+    bodyFrameCount: int = 0
     averageClubConfidence: float = 0
     leftWristPathLengthPx: Optional[float] = None
     rightWristPathLengthPx: Optional[float] = None
@@ -77,6 +121,9 @@ class SwingTrackingSummary(BaseModel):
     maxClubHeadSpeedPxPerSec: Optional[float] = None
     estimatedImpactMs: Optional[int] = None
     clubDetectionMethod: str = 'hough_line_near_hands'
+    golfMetrics: Dict[str, object] = Field(default_factory=dict)
+    quality: Dict[str, object] = Field(default_factory=dict)
+    trackedFeatureSet: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
 
 
@@ -90,9 +137,11 @@ class SwingPhaseTimestamps(BaseModel):
 
 class SwingTrimWindow(BaseModel):
     startMs: int = 0
+    detectedStartMs: Optional[int] = None
     endMs: int = 0
     startFrameIndex: int = 0
     endFrameIndex: int = 0
+    preRollMs: int = 0
     method: Literal['pose_motion', 'pose_motion_short_clip', 'llm_vision', 'fallback_full_video'] = 'fallback_full_video'
     confidence: float = 0
     notes: Optional[str] = None

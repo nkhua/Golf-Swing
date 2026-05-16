@@ -81,6 +81,10 @@ describe('SwingVideoSkeletonOverlay', () => {
     expect(screen.getAllByTestId('pose-overlay-joint')).toHaveLength(13);
     expect(screen.getByTestId('tracking-overlay-layer')).toBeTruthy();
     expect(screen.getAllByTestId('tracking-overlay-wrist')).toHaveLength(2);
+    expect(screen.getAllByTestId('tracking-overlay-hand')).toHaveLength(2);
+    expect(screen.getAllByTestId('tracking-overlay-eye')).toHaveLength(2);
+    expect(screen.getByTestId('tracking-overlay-eye-line')).toBeTruthy();
+    expect(screen.getByTestId('tracking-overlay-head-direction')).toBeTruthy();
     expect(screen.getByTestId('tracking-overlay-grip')).toBeTruthy();
     expect(screen.getByTestId('tracking-overlay-club-head')).toBeTruthy();
     expect(screen.getByTestId('tracking-overlay-club-shaft')).toBeTruthy();

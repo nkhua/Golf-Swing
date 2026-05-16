@@ -200,16 +200,39 @@ function TrackingOverlay({
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill} testID="tracking-overlay-layer">
+      {frame.eyeLine?.start && frame.eyeLine?.end ? (
+        <TrackingLine
+          from={frame.eyeLine.start}
+          to={frame.eyeLine.end}
+          overlaySize={overlaySize}
+          variant="eyeLine"
+          testID="tracking-overlay-eye-line"
+        />
+      ) : null}
+      {frame.headDirection?.start && frame.headDirection?.end ? (
+        <TrackingLine
+          from={frame.headDirection.start}
+          to={frame.headDirection.end}
+          overlaySize={overlaySize}
+          variant="headDirection"
+          testID="tracking-overlay-head-direction"
+        />
+      ) : null}
       {shaftStart && shaftEnd ? (
         <TrackingLine
           from={shaftStart}
           to={shaftEnd}
           overlaySize={overlaySize}
+          variant="clubShaft"
           testID="tracking-overlay-club-shaft"
         />
       ) : null}
       <TrackingPoint point={frame.leftWrist} overlaySize={overlaySize} variant="wrist" testID="tracking-overlay-wrist" />
       <TrackingPoint point={frame.rightWrist} overlaySize={overlaySize} variant="wrist" testID="tracking-overlay-wrist" />
+      <TrackingPoint point={frame.leftMiddleMcp} overlaySize={overlaySize} variant="hand" testID="tracking-overlay-hand" />
+      <TrackingPoint point={frame.rightMiddleMcp} overlaySize={overlaySize} variant="hand" testID="tracking-overlay-hand" />
+      <TrackingPoint point={frame.leftEye} overlaySize={overlaySize} variant="eye" testID="tracking-overlay-eye" />
+      <TrackingPoint point={frame.rightEye} overlaySize={overlaySize} variant="eye" testID="tracking-overlay-eye" />
       <TrackingPoint point={frame.grip} overlaySize={overlaySize} variant="grip" testID="tracking-overlay-grip" />
       <TrackingPoint point={frame.clubHead} overlaySize={overlaySize} variant="clubHead" testID="tracking-overlay-club-head" />
     </View>
@@ -220,11 +243,13 @@ function TrackingLine({
   from,
   to,
   overlaySize,
+  variant = 'clubShaft',
   testID,
 }: {
   from: TrackedPoint;
   to: TrackedPoint;
   overlaySize: OverlaySize;
+  variant?: 'clubShaft' | 'eyeLine' | 'headDirection';
   testID: string;
 }) {
   const fromX = from.x * overlaySize.width;
@@ -236,12 +261,18 @@ function TrackingLine({
   const length = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx);
   const opacity = clamp(Math.min(from.confidence ?? 0, to.confidence ?? 0), 0.2, 0.95);
+  const lineStyle =
+    variant === 'eyeLine'
+      ? styles.trackingEyeLine
+      : variant === 'headDirection'
+        ? styles.trackingHeadDirection
+        : styles.trackingClubShaft;
 
   return (
     <View
       testID={testID}
       style={[
-        styles.trackingClubShaft,
+        lineStyle,
         {
           left: fromX + dx / 2 - length / 2,
           top: fromY + dy / 2 - 1.5,
@@ -262,17 +293,21 @@ function TrackingPoint({
 }: {
   point?: TrackedPoint;
   overlaySize: OverlaySize;
-  variant: 'wrist' | 'grip' | 'clubHead';
+  variant: 'wrist' | 'hand' | 'eye' | 'grip' | 'clubHead';
   testID: string;
 }) {
   if (!point) {
     return null;
   }
 
-  const size = variant === 'clubHead' ? 12 : variant === 'grip' ? 9 : 10;
+  const size = variant === 'clubHead' ? 12 : variant === 'grip' ? 9 : variant === 'eye' ? 7 : 10;
   const style =
     variant === 'clubHead'
       ? styles.trackingClubHead
+      : variant === 'hand'
+        ? styles.trackingHand
+        : variant === 'eye'
+          ? styles.trackingEye
       : variant === 'grip'
         ? styles.trackingGrip
         : styles.trackingWrist;
@@ -445,6 +480,18 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#ffd60a',
   },
+  trackingEyeLine: {
+    position: 'absolute',
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#64d2ff',
+  },
+  trackingHeadDirection: {
+    position: 'absolute',
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#bf5af2',
+  },
   trackingPoint: {
     position: 'absolute',
     borderWidth: 2,
@@ -456,6 +503,14 @@ const styles = StyleSheet.create({
   trackingGrip: {
     backgroundColor: '#ff375f',
     borderColor: '#fff',
+  },
+  trackingHand: {
+    backgroundColor: '#ff9f0a',
+    borderColor: '#fff',
+  },
+  trackingEye: {
+    backgroundColor: '#64d2ff',
+    borderColor: '#001f2d',
   },
   trackingClubHead: {
     backgroundColor: '#ffd60a',

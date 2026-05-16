@@ -11,7 +11,11 @@ describe('mock swing analyzers', () => {
       expect(Array.isArray(result.poseFrames)).toBe(true);
       expect(Array.isArray(result.trackingFrames)).toBe(true);
       expect(result.trackingFrames[0]).toHaveProperty('clubHead');
+      expect(result.trackingFrames[0]).toHaveProperty('handMetrics');
+      expect(result.trackingFrames[0]).toHaveProperty('headMetrics');
       expect(result.trackingSummary).toHaveProperty('clubFrameCount');
+      expect(result.trackingSummary.golfMetrics).toHaveProperty('averageLeftWristAngleDegrees');
+      expect(result.trackingSummary.quality.overallTrackingConfidence).toBeGreaterThan(0.8);
       expect(result.biomechanics).toHaveProperty('tempoRatio');
       expect(result.swingWindow).toMatchObject({
         startMs: 250,

@@ -51,9 +51,9 @@ The Expo app can record real user video today, but real pose extraction happens 
 4. Confirm your phone can open `http://YOUR_COMPUTER_LAN_IP:8000/health`.
 5. Start Expo with `npm run start:lan` from `mobile/`.
 6. Record a swing, then tap `Upload and Process`.
-7. The results screen should show `Pose source: Real video processed by backend MediaPipe`, a detected `Swing Cut`, non-zero pose/tracking frames, a skeleton overlay with wrist/grip/club-head/shaft points on the captured swing segment, and a standalone 3D skeleton.
+7. The results screen should show `Pose source: Real video processed by backend MediaPipe`, a detected `Swing Cut`, non-zero pose/tracking frames, a skeleton overlay with body, wrist, hand, eye-line, grip, club-head, and shaft points on the captured swing segment, and a standalone 3D skeleton.
 
-Backend uploads now trim analysis to the detected swing window. By default this is local pose-motion segmentation. Wrist/grip/club tracking is returned as structured `trackingFrames` plus a compact `trackingSummary`; LLM payloads include the summary by default and can include full tracking points with `SEND_POSE_DATA_TO_LLM=true` and `SEND_ONLY_SUMMARIZED_METRICS_TO_LLM=false`. To let a vision LLM refine the cut, set `SEND_VIDEO_TO_LLM=true` and provide `OPENAI_API_KEY`; the backend sends only sampled JPEG frames, not the whole video file, and the response reports `privacy.videoFramesSentToLlm`.
+Backend uploads now trim analysis to the detected swing window. Playback includes up to 2 seconds before the detected swing start, while `swingWindow.detectedStartMs` and `phases.address` keep the true swing-start timestamp. By default this is local pose-motion segmentation. Body, wrist, eye-line, grip, club-head, and shaft tracking are returned as structured `trackingFrames` plus compact `trackingSummary.golfMetrics` and `trackingSummary.quality`; LLM payloads include the summary by default and can include full tracking points with `SEND_POSE_DATA_TO_LLM=true` and `SEND_ONLY_SUMMARIZED_METRICS_TO_LLM=false`. To let a vision LLM refine the cut, set `SEND_VIDEO_TO_LLM=true` and provide `OPENAI_API_KEY`; the backend sends only sampled JPEG frames, not the whole video file, and the response reports `privacy.videoFramesSentToLlm`.
 
 ### Backend
 

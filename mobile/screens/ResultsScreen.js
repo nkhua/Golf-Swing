@@ -17,6 +17,8 @@ export default function ResultsScreen({ route }) {
   const privacy = analysis?.privacy || {};
   const swingWindow = analysis?.swingWindow;
   const trackingSummary = analysis?.trackingSummary || {};
+  const trackingGolfMetrics = trackingSummary.golfMetrics || {};
+  const trackingQuality = trackingSummary.quality || {};
   const skeletonBuild = useMemo(() => {
     if (!analysis?.poseFrames?.length) {
       return { frames: [], error: null };
@@ -77,7 +79,9 @@ export default function ResultsScreen({ route }) {
           {swingWindow ? (
             <View style={styles.card}>
               <Text style={styles.subheading}>Swing Cut</Text>
-              <Text style={styles.metric}>Start: {formatMs(swingWindow.startMs)}</Text>
+              <Text style={styles.metric}>Playback start: {formatMs(swingWindow.startMs)}</Text>
+              <Text style={styles.metric}>Detected swing start: {formatMs(swingWindow.detectedStartMs)}</Text>
+              <Text style={styles.metric}>Pre-roll: {formatMs(swingWindow.preRollMs)}</Text>
               <Text style={styles.metric}>End: {formatMs(swingWindow.endMs)}</Text>
               <Text style={styles.metric}>Method: {swingWindow.method === 'llm_vision' ? 'LLM vision' : swingWindow.method}</Text>
               <Text style={styles.metric}>Confidence: {formatNumber(swingWindow.confidence)}</Text>
@@ -101,15 +105,27 @@ export default function ResultsScreen({ route }) {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.subheading}>Wrist and Club Tracking</Text>
+            <Text style={styles.subheading}>Body, Wrist, Eye, and Club Tracking</Text>
             <Text style={styles.metric}>Tracking frames: {trackingSummary.framesTracked || analysis.trackingFrames?.length || 0}</Text>
+            <Text style={styles.metric}>Body frames: {trackingSummary.bodyFrameCount || 0}</Text>
             <Text style={styles.metric}>Wrist frames: {trackingSummary.wristFrameCount || 0}</Text>
+            <Text style={styles.metric}>Hand-detail frames: {trackingSummary.handFrameCount || 0}</Text>
+            <Text style={styles.metric}>Head/eye frames: {trackingSummary.headFrameCount || trackingSummary.faceFrameCount || 0}</Text>
             <Text style={styles.metric}>Club frames: {trackingSummary.clubFrameCount || 0}</Text>
             <Text style={styles.metric}>Club confidence: {formatNumber(trackingSummary.averageClubConfidence)}</Text>
+            <Text style={styles.metric}>Overall tracking confidence: {formatNumber(trackingQuality.overallTrackingConfidence)}</Text>
+            <Text style={styles.metric}>Avg left wrist angle: {formatNumber(trackingGolfMetrics.averageLeftWristAngleDegrees, ' deg')}</Text>
+            <Text style={styles.metric}>Avg right wrist angle: {formatNumber(trackingGolfMetrics.averageRightWristAngleDegrees, ' deg')}</Text>
+            <Text style={styles.metric}>Impact shaft lean: {formatNumber(trackingGolfMetrics.shaftLeanAtImpactDegrees, ' deg')}</Text>
+            <Text style={styles.metric}>Eye line at address: {formatNumber(trackingGolfMetrics.eyeLineAngleAtAddress, ' deg')}</Text>
+            <Text style={styles.metric}>Head turn at impact: {formatNumber(trackingGolfMetrics.headTurnAtImpact)}</Text>
             <Text style={styles.metric}>Grip path: {formatNumber(trackingSummary.gripPathLengthPx, ' px')}</Text>
             <Text style={styles.metric}>Club-head path: {formatNumber(trackingSummary.clubHeadPathLengthPx, ' px')}</Text>
             <Text style={styles.metric}>Max club speed: {formatNumber(trackingSummary.maxClubHeadSpeedPxPerSec, ' px/s')}</Text>
             <Text style={styles.metric}>Estimated impact: {formatMs(trackingSummary.estimatedImpactMs)}</Text>
+            {trackingQuality.needsRetake && Array.isArray(trackingQuality.retakeReasons) ? (
+              <Text style={styles.note}>{trackingQuality.retakeReasons.join(' ')}</Text>
+            ) : null}
             {trackingSummary.notes ? <Text style={styles.note}>{trackingSummary.notes}</Text> : null}
           </View>
 

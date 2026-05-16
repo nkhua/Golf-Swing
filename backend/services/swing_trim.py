@@ -15,10 +15,20 @@ SWING_TRIM_PROMPT = (
     'startMs should be the address/start of takeaway, and endMs should be the balanced finish. '
     'Prefer the full swing over cutting off the takeaway, impact, or finish.'
 )
+PRE_SWING_PREROLL_MS = 2000
+POST_SWING_PAD_MS = 250
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     return min(max(value, minimum), maximum)
+
+
+def _start_with_preroll(detected_start_ms: int) -> int:
+    return max(0, int(detected_start_ms) - PRE_SWING_PREROLL_MS)
+
+
+def _preroll_included_ms(detected_start_ms: int, window_start_ms: int) -> int:
+    return max(0, int(detected_start_ms) - int(window_start_ms))
 
 
 def _landmark_map(frame_data: Dict[str, object]) -> Dict[str, Dict[str, float]]:
@@ -108,26 +118,31 @@ def estimate_swing_window_from_pose(
         end_ms = duration_ms if duration_ms > 0 else 0
         return {
             'startMs': 0,
+            'detectedStartMs': 0,
             'endMs': end_ms,
             'startFrameIndex': 0,
             'endFrameIndex': 0,
+            'preRollMs': 0,
             'method': 'fallback_full_video',
             'confidence': 0,
             'notes': 'No pose frames were available, so the full video was kept.',
         }, {'address': 0, 'finish': end_ms}
 
     if len(frames) < 4:
-        start_ms = int(frames[0].get('timestampMs') or 0)
+        detected_start_ms = int(frames[0].get('timestampMs') or 0)
+        start_ms = _start_with_preroll(detected_start_ms)
         end_ms = int(frames[-1].get('timestampMs') or duration_ms or start_ms)
         return {
             'startMs': start_ms,
+            'detectedStartMs': detected_start_ms,
             'endMs': end_ms,
             'startFrameIndex': int(frames[0].get('frameIndex') or 0),
             'endFrameIndex': int(frames[-1].get('frameIndex') or 0),
+            'preRollMs': _preroll_included_ms(detected_start_ms, start_ms),
             'method': 'pose_motion_short_clip',
             'confidence': 0.35,
             'notes': 'Few pose frames were available, so the detected pose span was kept.',
-        }, {'address': start_ms, 'finish': end_ms}
+        }, {'address': detected_start_ms, 'finish': end_ms}
 
     motions = [_frame_motion(frames[index - 1], frames[index]) for index in range(1, len(frames))]
     peak_motion = max(motions) if motions else 0
@@ -140,12 +155,11 @@ def estimate_swing_window_from_pose(
 
     first_active = max(min(active_indices) - 2, 0)
     last_active = min(max(active_indices) + 2, len(frames) - 1)
-    pad_ms = 250
-    raw_start_ms = int(frames[first_active].get('timestampMs') or 0)
-    raw_end_ms = int(frames[last_active].get('timestampMs') or raw_start_ms)
-    start_ms = max(0, raw_start_ms - pad_ms)
+    detected_start_ms = int(frames[first_active].get('timestampMs') or 0)
+    raw_end_ms = int(frames[last_active].get('timestampMs') or detected_start_ms)
+    start_ms = _start_with_preroll(detected_start_ms)
     end_ceiling = duration_ms if duration_ms > 0 else int(frames[-1].get('timestampMs') or raw_end_ms)
-    end_ms = min(end_ceiling, raw_end_ms + pad_ms)
+    end_ms = min(end_ceiling, raw_end_ms + POST_SWING_PAD_MS)
 
     if end_ms - start_ms < 900:
         midpoint = (start_ms + end_ms) // 2
@@ -167,15 +181,17 @@ def estimate_swing_window_from_pose(
 
     return {
         'startMs': int(start_ms),
+        'detectedStartMs': int(detected_start_ms),
         'endMs': int(end_ms),
         'startFrameIndex': int(start_frame.get('frameIndex') or 0),
         'endFrameIndex': int(end_frame.get('frameIndex') or 0),
+        'preRollMs': _preroll_included_ms(detected_start_ms, start_ms),
         'method': 'pose_motion',
         'confidence': round(confidence, 2),
-        'notes': 'Detected from wrist, elbow, shoulder, and hip motion in MediaPipe pose frames.',
+        'notes': 'Detected from wrist, elbow, shoulder, and hip motion in MediaPipe pose frames. Playback includes up to 2 seconds before the detected swing start.',
     }, {
-        'address': int(start_ms),
-        'takeaway': int(max(start_ms, top_ms - max((top_ms - start_ms) // 2, 1))),
+        'address': int(detected_start_ms),
+        'takeaway': int(max(detected_start_ms, top_ms - max((top_ms - detected_start_ms) // 2, 1))),
         'topOfBackswing': int(top_ms),
         'impact': int(impact_ms),
         'finish': int(end_ms),
@@ -253,26 +269,29 @@ def _parse_llm_window(text: str, duration_ms: int) -> Optional[Dict[str, object]
             return None
 
     try:
-        start_ms = int(parsed['startMs'])
+        detected_start_ms = int(parsed['startMs'])
         end_ms = int(parsed['endMs'])
     except (KeyError, TypeError, ValueError):
         return None
 
     if duration_ms > 0:
-        start_ms = int(_clamp(start_ms, 0, duration_ms))
-        end_ms = int(_clamp(end_ms, start_ms, duration_ms))
+        detected_start_ms = int(_clamp(detected_start_ms, 0, duration_ms))
+        end_ms = int(_clamp(end_ms, detected_start_ms, duration_ms))
 
-    if end_ms <= start_ms:
+    if end_ms <= detected_start_ms:
         return None
 
+    start_ms = _start_with_preroll(detected_start_ms)
     confidence = _clamp(float(parsed.get('confidence') or 0.6), 0, 1)
     notes = str(parsed.get('notes') or 'Refined from sampled video frames by the configured LLM.')
     return {
         'startMs': start_ms,
+        'detectedStartMs': detected_start_ms,
         'endMs': end_ms,
+        'preRollMs': _preroll_included_ms(detected_start_ms, start_ms),
         'method': 'llm_vision',
         'confidence': round(confidence, 2),
-        'notes': notes[:240],
+        'notes': f'{notes[:200]} Playback includes up to 2 seconds before the detected swing start.',
     }
 
 

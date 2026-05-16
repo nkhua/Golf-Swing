@@ -14,6 +14,7 @@ The project uses the existing `mobile/.env` file as the local source of safety c
 - `SEND_VIDEO_TO_LLM=false` blocks raw video from AI/LLM requests.
 - `SEND_POSE_DATA_TO_LLM=false` blocks full pose arrays from AI/LLM requests.
 - `SEND_ONLY_SUMMARIZED_METRICS_TO_LLM=true` allows only summarized metrics by default.
+- `ENABLE_LLM_SWING_COACHING=false` prevents automatic coaching calls until you explicitly enable them.
 
 ## Development
 
@@ -69,4 +70,6 @@ Structured pose and metric JSON can be submitted to `POST /swings/analysis` with
 
 Logging helpers redact keys such as API keys, tokens, secrets, passwords, and database URLs. Pose/frame data is excluded unless sensitive logging is explicitly enabled.
 
-LLM payload helpers block raw video and exclude full pose arrays by default. The intended AI-safe payload contains summarized metadata, phases, biomechanics, and estimates only.
+LLM payload helpers block raw video and exclude full pose arrays by default. The intended AI-safe payload contains summarized metadata, phases, biomechanics, tracking summaries, ball-flight summaries, and estimates only.
+
+When `ENABLE_LLM_SWING_COACHING=true`, the backend sends summarized swing evidence to the configured coaching model and stores the structured coaching response as `swingCoaching`. The mobile app can display those pain points on the video timeline without sending raw video to the coaching LLM.

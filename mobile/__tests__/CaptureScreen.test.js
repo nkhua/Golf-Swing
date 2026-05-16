@@ -32,6 +32,7 @@ describe('CaptureScreen', () => {
     });
 
     expect(getByText('Record')).toBeTruthy();
+    expect(getByText('Keep recording through impact and the first few seconds of ball flight.')).toBeTruthy();
     expect(queryByText('Requesting camera permission...')).toBeNull();
   });
 });

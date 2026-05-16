@@ -19,6 +19,10 @@ export default function ResultsScreen({ route }) {
   const trackingSummary = analysis?.trackingSummary || {};
   const trackingGolfMetrics = trackingSummary.golfMetrics || {};
   const trackingQuality = trackingSummary.quality || {};
+  const ballFlightSummary = analysis?.ballFlightSummary || {};
+  const ballFlightQuality = ballFlightSummary.quality || {};
+  const swingCoaching = analysis?.swingCoaching || {};
+  const coachingPainPoints = Array.isArray(swingCoaching.painPoints) ? swingCoaching.painPoints : [];
   const skeletonBuild = useMemo(() => {
     if (!analysis?.poseFrames?.length) {
       return { frames: [], error: null };
@@ -59,11 +63,13 @@ export default function ResultsScreen({ route }) {
                 videoUri={analysis.localVideoUri}
                 poseFrames={analysis.poseFrames}
                 trackingFrames={analysis.trackingFrames}
+                ballTrackingFrames={analysis.ballTrackingFrames}
+                coachingPainPoints={coachingPainPoints}
                 videoMetadata={analysis.videoMetadata}
                 swingWindow={swingWindow}
               />
               <Text style={styles.note}>
-                Overlay uses MediaPipe pose landmarks plus tracked wrist, grip, club-head, and shaft points.
+                Overlay uses MediaPipe pose landmarks plus tracked wrist, grip, club-head, shaft, and post-impact ball points.
               </Text>
             </View>
           ) : null}
@@ -74,6 +80,32 @@ export default function ResultsScreen({ route }) {
             <Text style={styles.metric}>Raw video uploaded: {privacy.rawVideoUploaded ? 'Yes' : 'No'}</Text>
             <Text style={styles.metric}>Upload consent: {privacy.userConsentedToUpload ? 'Yes' : 'No'}</Text>
             <Text style={styles.metric}>Frames sent to LLM: {privacy.videoFramesSentToLlm ? 'Yes' : 'No'}</Text>
+            <Text style={styles.metric}>Swing metrics sent to LLM: {privacy.swingMetricsSentToLlm ? 'Yes' : 'No'}</Text>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.subheading}>LLM Swing Coach</Text>
+            <Text style={styles.metric}>Status: {swingCoaching.status || 'Unavailable'}</Text>
+            <Text style={styles.metric}>Model: {swingCoaching.model || 'Unavailable'}</Text>
+            <Text style={styles.metric}>Confidence: {formatNumber(swingCoaching.confidence)}</Text>
+            {swingCoaching.summary ? <Text style={styles.coachingSummary}>{swingCoaching.summary}</Text> : null}
+            {coachingPainPoints.length ? (
+              <View style={styles.painPointList}>
+                {coachingPainPoints.map((painPoint, index) => (
+                  <View key={painPoint.id || `${painPoint.title}-${index}`} style={styles.painPointRow}>
+                    <Text style={styles.painPointMeta}>
+                      {painPoint.severity || 'medium'} | {painPoint.phase || 'overall'} | {formatMs(painPoint.timestampMs)}
+                    </Text>
+                    <Text style={styles.painPointTitle}>{painPoint.title}</Text>
+                    <Text style={styles.painPointText}>{painPoint.evidence}</Text>
+                    <Text style={styles.painPointCue}>Video cue: {painPoint.videoCue}</Text>
+                    <Text style={styles.painPointText}>Fix: {painPoint.recommendation}</Text>
+                    <Text style={styles.painPointText}>Drill: {painPoint.drill}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {swingCoaching.notes ? <Text style={styles.note}>{swingCoaching.notes}</Text> : null}
           </View>
 
           {swingWindow ? (
@@ -82,7 +114,9 @@ export default function ResultsScreen({ route }) {
               <Text style={styles.metric}>Playback start: {formatMs(swingWindow.startMs)}</Text>
               <Text style={styles.metric}>Detected swing start: {formatMs(swingWindow.detectedStartMs)}</Text>
               <Text style={styles.metric}>Pre-roll: {formatMs(swingWindow.preRollMs)}</Text>
-              <Text style={styles.metric}>End: {formatMs(swingWindow.endMs)}</Text>
+              <Text style={styles.metric}>Detected swing finish: {formatMs(swingWindow.detectedEndMs)}</Text>
+              <Text style={styles.metric}>Ball-flight post-roll: {formatMs(swingWindow.postRollMs)}</Text>
+              <Text style={styles.metric}>Playback end: {formatMs(swingWindow.endMs)}</Text>
               <Text style={styles.metric}>Method: {swingWindow.method === 'llm_vision' ? 'LLM vision' : swingWindow.method}</Text>
               <Text style={styles.metric}>Confidence: {formatNumber(swingWindow.confidence)}</Text>
               {swingWindow.notes ? <Text style={styles.note}>{swingWindow.notes}</Text> : null}
@@ -131,14 +165,23 @@ export default function ResultsScreen({ route }) {
 
           <View style={styles.card}>
             <Text style={styles.subheading}>Estimated Ball Flight</Text>
+            <Text style={styles.metric}>Ball tracking frames: {ballFlightSummary.framesTracked || analysis.ballTrackingFrames?.length || 0}</Text>
+            <Text style={styles.metric}>Visible ball frames: {ballFlightSummary.ballFrameCount || 0}</Text>
+            <Text style={styles.metric}>Tracked ball window: {formatMs(ballFlightSummary.trackingStartMs)}-{formatMs(ballFlightSummary.trackingEndMs)}</Text>
             <Text style={styles.metric}>Launch angle: {formatRange(estimates.launchAngleRange, ' deg')}</Text>
             <Text style={styles.metric}>Launch direction: {estimates.launchDirection || 'Unavailable'}</Text>
+            <Text style={styles.metric}>Trajectory angle: {formatNumber(ballFlightSummary.trajectoryAngleDegrees, ' deg')}</Text>
             <Text style={styles.metric}>Shot shape: {estimates.shotShape || 'Unknown'}</Text>
+            <Text style={styles.metric}>Ball path: {formatNumber(ballFlightSummary.ballPathLengthPx, ' px')}</Text>
+            <Text style={styles.metric}>Max ball speed: {formatNumber(ballFlightSummary.maxBallSpeedPxPerSec, ' px/s')}</Text>
             <Text style={styles.metric}>Carry: {formatRange(estimates.carryRangeYards, ' yd')}</Text>
             <Text style={styles.metric}>Spin tendency: {estimates.spinTendency || 'Unknown'}</Text>
             <Text style={styles.metric}>Confidence: {formatNumber(estimates.confidence)}</Text>
+            {ballFlightQuality.needsRetake && Array.isArray(ballFlightQuality.retakeReasons) ? (
+              <Text style={styles.note}>{ballFlightQuality.retakeReasons.join(' ')}</Text>
+            ) : null}
             <Text style={styles.note}>
-              Ball-flight fields are estimates and require future launch-monitor calibration.
+              Ball-flight fields come from post-impact video tracking when visible and still require future launch-monitor calibration.
             </Text>
           </View>
 
@@ -205,6 +248,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: '#555',
+  },
+  coachingSummary: {
+    marginBottom: 10,
+    fontSize: 15,
+    lineHeight: 21,
+    color: '#333',
+  },
+  painPointList: {
+    borderTopWidth: 1,
+    borderTopColor: '#e5e5ea',
+  },
+  painPointRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5ea',
+  },
+  painPointMeta: {
+    marginBottom: 5,
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  painPointTitle: {
+    marginBottom: 6,
+    color: '#111214',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  painPointText: {
+    marginBottom: 5,
+    color: '#333',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  painPointCue: {
+    marginBottom: 5,
+    color: '#7a4a00',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   tip: {
     marginTop: 8,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
-import Skeleton3DViewer from '../components/Skeleton3DViewer';
+import Skeleton3DViewer, { getStableProjectionBounds } from '../components/Skeleton3DViewer';
 import { createSkeletonFrameFromNamedPoseLandmarks } from '../services/model/createSkeletonFrame';
 
 const makeLandmarks = () =>
@@ -27,5 +27,29 @@ describe('Skeleton3DViewer', () => {
 
     expect(screen.getByText('Play')).toBeTruthy();
     expect(screen.getByText('1/1')).toBeTruthy();
+  });
+
+  it('uses robust projection bounds so one bad landmark does not zoom the whole model', () => {
+    const normalFrame = createSkeletonFrameFromNamedPoseLandmarks(makeLandmarks(), 0, 0);
+    const outlierFrame = {
+      ...normalFrame,
+      frameIndex: 99,
+      joints: {
+        ...normalFrame.joints,
+        left_wrist: {
+          ...normalFrame.joints.left_wrist,
+          position: { x: 8, y: 8, z: 8 },
+        },
+      },
+    };
+
+    const bounds = getStableProjectionBounds(
+      Array.from({ length: 8 }, (_, index) => ({ ...normalFrame, frameIndex: index })).concat(outlierFrame),
+      { yaw: 0.55, pitch: 0.25 }
+    );
+
+    expect(bounds).toBeTruthy();
+    expect(bounds.maxX).toBeLessThan(1);
+    expect(bounds.maxY).toBeLessThan(1);
   });
 });

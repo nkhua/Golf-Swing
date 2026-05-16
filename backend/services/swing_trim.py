@@ -17,6 +17,7 @@ SWING_TRIM_PROMPT = (
 )
 PRE_SWING_PREROLL_MS = 2000
 POST_SWING_PAD_MS = 250
+BALL_FLIGHT_POSTROLL_MS = 3500
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
@@ -119,10 +120,12 @@ def estimate_swing_window_from_pose(
         return {
             'startMs': 0,
             'detectedStartMs': 0,
+            'detectedEndMs': end_ms,
             'endMs': end_ms,
             'startFrameIndex': 0,
             'endFrameIndex': 0,
             'preRollMs': 0,
+            'postRollMs': 0,
             'method': 'fallback_full_video',
             'confidence': 0,
             'notes': 'No pose frames were available, so the full video was kept.',
@@ -131,18 +134,22 @@ def estimate_swing_window_from_pose(
     if len(frames) < 4:
         detected_start_ms = int(frames[0].get('timestampMs') or 0)
         start_ms = _start_with_preroll(detected_start_ms)
-        end_ms = int(frames[-1].get('timestampMs') or duration_ms or start_ms)
+        detected_end_ms = int(frames[-1].get('timestampMs') or duration_ms or start_ms)
+        end_ceiling = duration_ms if duration_ms > 0 else detected_end_ms
+        end_ms = min(end_ceiling, detected_end_ms + BALL_FLIGHT_POSTROLL_MS)
         return {
             'startMs': start_ms,
             'detectedStartMs': detected_start_ms,
+            'detectedEndMs': detected_end_ms,
             'endMs': end_ms,
             'startFrameIndex': int(frames[0].get('frameIndex') or 0),
             'endFrameIndex': int(frames[-1].get('frameIndex') or 0),
             'preRollMs': _preroll_included_ms(detected_start_ms, start_ms),
+            'postRollMs': max(0, end_ms - detected_end_ms),
             'method': 'pose_motion_short_clip',
             'confidence': 0.35,
             'notes': 'Few pose frames were available, so the detected pose span was kept.',
-        }, {'address': detected_start_ms, 'finish': end_ms}
+        }, {'address': detected_start_ms, 'finish': detected_end_ms}
 
     motions = [_frame_motion(frames[index - 1], frames[index]) for index in range(1, len(frames))]
     peak_motion = max(motions) if motions else 0
@@ -159,7 +166,8 @@ def estimate_swing_window_from_pose(
     raw_end_ms = int(frames[last_active].get('timestampMs') or detected_start_ms)
     start_ms = _start_with_preroll(detected_start_ms)
     end_ceiling = duration_ms if duration_ms > 0 else int(frames[-1].get('timestampMs') or raw_end_ms)
-    end_ms = min(end_ceiling, raw_end_ms + POST_SWING_PAD_MS)
+    detected_end_ms = min(end_ceiling, raw_end_ms + POST_SWING_PAD_MS)
+    end_ms = min(end_ceiling, detected_end_ms + BALL_FLIGHT_POSTROLL_MS)
 
     if end_ms - start_ms < 900:
         midpoint = (start_ms + end_ms) // 2
@@ -182,19 +190,21 @@ def estimate_swing_window_from_pose(
     return {
         'startMs': int(start_ms),
         'detectedStartMs': int(detected_start_ms),
+        'detectedEndMs': int(detected_end_ms),
         'endMs': int(end_ms),
         'startFrameIndex': int(start_frame.get('frameIndex') or 0),
         'endFrameIndex': int(end_frame.get('frameIndex') or 0),
         'preRollMs': _preroll_included_ms(detected_start_ms, start_ms),
+        'postRollMs': max(0, int(end_ms) - int(detected_end_ms)),
         'method': 'pose_motion',
         'confidence': round(confidence, 2),
-        'notes': 'Detected from wrist, elbow, shoulder, and hip motion in MediaPipe pose frames. Playback includes up to 2 seconds before the detected swing start.',
+        'notes': 'Detected from wrist, elbow, shoulder, and hip motion in MediaPipe pose frames. Playback includes up to 2 seconds before the swing and up to 3.5 seconds after finish for ball flight.',
     }, {
         'address': int(detected_start_ms),
         'takeaway': int(max(detected_start_ms, top_ms - max((top_ms - detected_start_ms) // 2, 1))),
         'topOfBackswing': int(top_ms),
         'impact': int(impact_ms),
-        'finish': int(end_ms),
+        'finish': int(detected_end_ms),
     }
 
 
@@ -270,28 +280,31 @@ def _parse_llm_window(text: str, duration_ms: int) -> Optional[Dict[str, object]
 
     try:
         detected_start_ms = int(parsed['startMs'])
-        end_ms = int(parsed['endMs'])
+        detected_end_ms = int(parsed['endMs'])
     except (KeyError, TypeError, ValueError):
         return None
 
     if duration_ms > 0:
         detected_start_ms = int(_clamp(detected_start_ms, 0, duration_ms))
-        end_ms = int(_clamp(end_ms, detected_start_ms, duration_ms))
+        detected_end_ms = int(_clamp(detected_end_ms, detected_start_ms, duration_ms))
 
-    if end_ms <= detected_start_ms:
+    if detected_end_ms <= detected_start_ms:
         return None
 
     start_ms = _start_with_preroll(detected_start_ms)
+    end_ms = min(duration_ms if duration_ms > 0 else detected_end_ms, detected_end_ms + BALL_FLIGHT_POSTROLL_MS)
     confidence = _clamp(float(parsed.get('confidence') or 0.6), 0, 1)
     notes = str(parsed.get('notes') or 'Refined from sampled video frames by the configured LLM.')
     return {
         'startMs': start_ms,
         'detectedStartMs': detected_start_ms,
+        'detectedEndMs': detected_end_ms,
         'endMs': end_ms,
         'preRollMs': _preroll_included_ms(detected_start_ms, start_ms),
+        'postRollMs': max(0, end_ms - detected_end_ms),
         'method': 'llm_vision',
         'confidence': round(confidence, 2),
-        'notes': f'{notes[:200]} Playback includes up to 2 seconds before the detected swing start.',
+        'notes': f'{notes[:180]} Playback includes lead-in before the swing and extra time after finish for ball flight.',
     }
 
 
@@ -312,8 +325,9 @@ def refine_swing_window_with_llm(
         'text': (
             f'{SWING_TRIM_PROMPT}\n'
             f'Video duration: {metadata.get("durationMs", 0)} ms. '
-            f'Heuristic proposal: start {proposed_window.get("startMs")} ms, '
-            f'end {proposed_window.get("endMs")} ms. '
+            f'Heuristic proposal for the actual swing: start '
+            f'{proposed_window.get("detectedStartMs", proposed_window.get("startMs"))} ms, '
+            f'end {proposed_window.get("detectedEndMs", proposed_window.get("endMs"))} ms. '
             'Each image is a sampled frame; its timestamp is included immediately before the image.'
         ),
     }]

@@ -36,6 +36,13 @@ type ProjectedJoint = SkeletonJoint & {
   depth: number;
 };
 
+type ProjectionBounds = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
 const BONES: Array<[SkeletonJointName, SkeletonJointName]> = [
   ['head', 'chest_center'],
   ['chest_center', 'pelvis_center'],
@@ -55,6 +62,9 @@ const BONES: Array<[SkeletonJointName, SkeletonJointName]> = [
 
 const JOINT_SIZE = 10;
 const MIN_VIEW_SIZE = 1;
+const MIN_POSE_SPAN = 0.28;
+const PROJECTION_PADDING_RATIO = 0.16;
+const MIN_BOUND_SAMPLE_COUNT = 6;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -74,10 +84,60 @@ const rotatePoint = (position: SkeletonPoint3D, orbit: OrbitState): SkeletonPoin
   };
 };
 
-const projectJoints = (
+const percentile = (values: number[], ratio: number) => {
+  if (!values.length) {
+    return 0;
+  }
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = clamp(Math.round((sorted.length - 1) * ratio), 0, sorted.length - 1);
+  return sorted[index];
+};
+
+const expandBounds = (bounds: ProjectionBounds): ProjectionBounds => {
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const width = Math.max(bounds.maxX - bounds.minX, MIN_POSE_SPAN);
+  const height = Math.max(bounds.maxY - bounds.minY, MIN_POSE_SPAN);
+  const padding = Math.max(width, height) * PROJECTION_PADDING_RATIO;
+
+  return {
+    minX: centerX - width / 2 - padding,
+    maxX: centerX + width / 2 + padding,
+    minY: centerY - height / 2 - padding,
+    maxY: centerY + height / 2 + padding,
+  };
+};
+
+export const getStableProjectionBounds = (
+  frames: SkeletonFrame[],
+  orbit: OrbitState
+): ProjectionBounds | null => {
+  const rotatedPoints = frames.flatMap((sourceFrame) =>
+    (Object.values(sourceFrame.joints).filter(Boolean) as SkeletonJoint[])
+      .filter((joint) => typeof joint.visibility !== 'number' || joint.visibility >= 0.25)
+      .map((joint) => rotatePoint(joint.position, orbit))
+  );
+
+  if (rotatedPoints.length < MIN_BOUND_SAMPLE_COUNT) {
+    return null;
+  }
+
+  const xs = rotatedPoints.map((point) => point.x);
+  const ys = rotatedPoints.map((point) => point.y);
+  return expandBounds({
+    minX: percentile(xs, 0.04),
+    maxX: percentile(xs, 0.96),
+    minY: percentile(ys, 0.04),
+    maxY: percentile(ys, 0.96),
+  });
+};
+
+export const projectJoints = (
   frame: SkeletonFrame,
   orbit: OrbitState,
-  canvasSize: CanvasSize
+  canvasSize: CanvasSize,
+  stableBounds?: ProjectionBounds | null
 ): ProjectedJoint[] => {
   const rotated = (Object.values(frame.joints).filter(Boolean) as SkeletonJoint[]).map((joint) => ({
     ...joint,
@@ -88,21 +148,22 @@ const projectJoints = (
     return [];
   }
 
-  const xs = rotated.map((joint) => joint.rotated.x);
-  const ys = rotated.map((joint) => joint.rotated.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const poseWidth = Math.max(maxX - minX, 0.001);
-  const poseHeight = Math.max(maxY - minY, 0.001);
+  const fallbackBounds = expandBounds({
+    minX: Math.min(...rotated.map((joint) => joint.rotated.x)),
+    maxX: Math.max(...rotated.map((joint) => joint.rotated.x)),
+    minY: Math.min(...rotated.map((joint) => joint.rotated.y)),
+    maxY: Math.max(...rotated.map((joint) => joint.rotated.y)),
+  });
+  const bounds = stableBounds || fallbackBounds;
+  const poseWidth = Math.max(bounds.maxX - bounds.minX, 0.001);
+  const poseHeight = Math.max(bounds.maxY - bounds.minY, 0.001);
   const usableWidth = Math.max(canvasSize.width - 48, MIN_VIEW_SIZE);
   const usableHeight = Math.max(canvasSize.height - 48, MIN_VIEW_SIZE);
   const scale = Math.min(usableWidth / poseWidth, usableHeight / poseHeight);
   const centerX = canvasSize.width / 2;
   const centerY = canvasSize.height / 2;
-  const poseCenterX = (minX + maxX) / 2;
-  const poseCenterY = (minY + maxY) / 2;
+  const poseCenterX = (bounds.minX + bounds.maxX) / 2;
+  const poseCenterY = (bounds.minY + bounds.maxY) / 2;
 
   return rotated.map((joint) => ({
     ...joint,
@@ -116,18 +177,20 @@ function SkeletonProjection({
   frame,
   orbit,
   canvasSize,
+  stableBounds,
 }: {
   frame: SkeletonFrame | null;
   orbit: OrbitState;
   canvasSize: CanvasSize;
+  stableBounds?: ProjectionBounds | null;
 }) {
   const projectedJoints = useMemo(() => {
     if (!frame) {
       return [];
     }
 
-    return projectJoints(frame, orbit, canvasSize);
-  }, [canvasSize, frame, orbit]);
+    return projectJoints(frame, orbit, canvasSize, stableBounds);
+  }, [canvasSize, frame, orbit, stableBounds]);
 
   const jointsByName = useMemo(() => {
     const map = new Map<SkeletonJointName, ProjectedJoint>();
@@ -216,6 +279,10 @@ export default function Skeleton3DViewer({
   const frameCount = playbackFrames.length;
   const safeFps = normalizePlaybackFps(fps);
   const frameIntervalMs = 1000 / safeFps;
+  const stableBounds = useMemo(
+    () => getStableProjectionBounds(playbackFrames, orbit),
+    [orbit, playbackFrames]
+  );
   const currentFrame = playbackFrames[currentFrameIndex] ?? playbackFrames[0] ?? null;
   const timelineProgress = getTimelineProgress(currentFrameIndex, frameCount);
 
@@ -330,7 +397,12 @@ export default function Skeleton3DViewer({
       <View style={styles.canvasContainer} onLayout={handleCanvasLayout} {...panResponder.panHandlers}>
         <View style={styles.gridLineHorizontal} />
         <View style={styles.gridLineVertical} />
-        <SkeletonProjection frame={currentFrame} orbit={orbit} canvasSize={canvasSize} />
+        <SkeletonProjection
+          frame={currentFrame}
+          orbit={orbit}
+          canvasSize={canvasSize}
+          stableBounds={stableBounds}
+        />
       </View>
 
       <View style={styles.controls}>

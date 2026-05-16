@@ -4,8 +4,10 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import type {
+  FrameBallTrackingData,
   FramePoseData,
   FrameTrackingData,
+  SwingCoachingPainPoint,
   SwingTrimWindow,
   SwingVideoMetadata,
   TrackedPoint,
@@ -16,6 +18,8 @@ type SwingVideoSkeletonOverlayProps = {
   videoUri: string;
   poseFrames: FramePoseData[];
   trackingFrames?: FrameTrackingData[];
+  ballTrackingFrames?: FrameBallTrackingData[];
+  coachingPainPoints?: SwingCoachingPainPoint[];
   videoMetadata?: Partial<SwingVideoMetadata>;
   swingWindow?: Partial<SwingTrimWindow>;
 };
@@ -93,6 +97,36 @@ export const getNearestTrackingFrameIndex = (trackingFrames: FrameTrackingData[]
   return nearestIndex;
 };
 
+export const getNearestBallTrackingFrameIndex = (ballTrackingFrames: FrameBallTrackingData[], currentTimeMs: number) => {
+  if (!ballTrackingFrames.length) {
+    return 0;
+  }
+
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < ballTrackingFrames.length; index += 1) {
+    const distance = Math.abs((ballTrackingFrames[index].timestampMs || 0) - currentTimeMs);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+
+  return nearestIndex;
+};
+
+export const getActiveCoachingPainPoint = (
+  painPoints: SwingCoachingPainPoint[],
+  currentTimeMs: number
+) => {
+  return painPoints.find((painPoint) => {
+    const startMs = Number(painPoint.timestampMs || 0) - 250;
+    const endMs = Math.max(Number(painPoint.endTimestampMs || painPoint.timestampMs || 0), startMs + 900);
+    return currentTimeMs >= startMs && currentTimeMs <= endMs + 250;
+  });
+};
+
 export const getVideoAspectRatio = (metadata?: Partial<SwingVideoMetadata>) => {
   const width = Number(metadata?.width || 0);
   const height = Number(metadata?.height || 0);
@@ -107,10 +141,14 @@ export const getVideoAspectRatio = (metadata?: Partial<SwingVideoMetadata>) => {
 function PoseOverlay({
   frame,
   trackingFrame,
+  ballTrackingFrame,
+  ballTrailFrames,
   overlaySize,
 }: {
   frame?: FramePoseData;
   trackingFrame?: FrameTrackingData;
+  ballTrackingFrame?: FrameBallTrackingData;
+  ballTrailFrames: FrameBallTrackingData[];
   overlaySize: OverlaySize;
 }) {
   const landmarksByName = useMemo(() => {
@@ -180,6 +218,7 @@ function PoseOverlay({
         />
       ))}
       <TrackingOverlay frame={trackingFrame} overlaySize={overlaySize} />
+      <BallTrackingOverlay frame={ballTrackingFrame} trailFrames={ballTrailFrames} overlaySize={overlaySize} />
     </View>
   );
 }
@@ -239,6 +278,50 @@ function TrackingOverlay({
   );
 }
 
+function BallTrackingOverlay({
+  frame,
+  trailFrames,
+  overlaySize,
+}: {
+  frame?: FrameBallTrackingData;
+  trailFrames: FrameBallTrackingData[];
+  overlaySize: OverlaySize;
+}) {
+  if (overlaySize.width <= 1 || overlaySize.height <= 1) {
+    return null;
+  }
+
+  const visibleTrail = trailFrames.filter((trailFrame) => trailFrame.ball);
+  const ball = frame?.ball;
+
+  if (!ball && visibleTrail.length < 2) {
+    return null;
+  }
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill} testID="ball-tracking-overlay-layer">
+      {visibleTrail.slice(1).map((trailFrame, index) => {
+        const previous = visibleTrail[index];
+        if (!previous.ball || !trailFrame.ball) {
+          return null;
+        }
+
+        return (
+          <TrackingLine
+            key={`${previous.frameIndex}-${trailFrame.frameIndex}`}
+            from={previous.ball}
+            to={trailFrame.ball}
+            overlaySize={overlaySize}
+            variant="ballTrail"
+            testID="ball-tracking-overlay-trail"
+          />
+        );
+      })}
+      <TrackingPoint point={ball} overlaySize={overlaySize} variant="ball" testID="ball-tracking-overlay-point" />
+    </View>
+  );
+}
+
 function TrackingLine({
   from,
   to,
@@ -249,7 +332,7 @@ function TrackingLine({
   from: TrackedPoint;
   to: TrackedPoint;
   overlaySize: OverlaySize;
-  variant?: 'clubShaft' | 'eyeLine' | 'headDirection';
+  variant?: 'clubShaft' | 'eyeLine' | 'headDirection' | 'ballTrail';
   testID: string;
 }) {
   const fromX = from.x * overlaySize.width;
@@ -266,6 +349,8 @@ function TrackingLine({
       ? styles.trackingEyeLine
       : variant === 'headDirection'
         ? styles.trackingHeadDirection
+        : variant === 'ballTrail'
+          ? styles.trackingBallTrail
         : styles.trackingClubShaft;
 
   return (
@@ -293,17 +378,19 @@ function TrackingPoint({
 }: {
   point?: TrackedPoint;
   overlaySize: OverlaySize;
-  variant: 'wrist' | 'hand' | 'eye' | 'grip' | 'clubHead';
+  variant: 'wrist' | 'hand' | 'eye' | 'grip' | 'clubHead' | 'ball';
   testID: string;
 }) {
   if (!point) {
     return null;
   }
 
-  const size = variant === 'clubHead' ? 12 : variant === 'grip' ? 9 : variant === 'eye' ? 7 : 10;
+  const size = variant === 'clubHead' ? 12 : variant === 'ball' ? 11 : variant === 'grip' ? 9 : variant === 'eye' ? 7 : 10;
   const style =
     variant === 'clubHead'
       ? styles.trackingClubHead
+      : variant === 'ball'
+        ? styles.trackingBall
       : variant === 'hand'
         ? styles.trackingHand
         : variant === 'eye'
@@ -335,6 +422,8 @@ export default function SwingVideoSkeletonOverlay({
   videoUri,
   poseFrames,
   trackingFrames = [],
+  ballTrackingFrames = [],
+  coachingPainPoints = [],
   videoMetadata,
   swingWindow,
 }: SwingVideoSkeletonOverlayProps) {
@@ -347,8 +436,18 @@ export default function SwingVideoSkeletonOverlay({
   const hasTrimWindow = trimEndMs > trimStartMs;
   const currentFrameIndex = getNearestPoseFrameIndex(poseFrames, currentTimeMs);
   const currentTrackingFrameIndex = getNearestTrackingFrameIndex(trackingFrames, currentTimeMs);
+  const currentBallTrackingFrameIndex = getNearestBallTrackingFrameIndex(ballTrackingFrames, currentTimeMs);
   const currentFrame = poseFrames[currentFrameIndex];
   const currentTrackingFrame = trackingFrames[currentTrackingFrameIndex];
+  const currentBallTrackingFrame = ballTrackingFrames[currentBallTrackingFrameIndex];
+  const visibleBallTrackingFrame =
+    currentBallTrackingFrame && Math.abs((currentBallTrackingFrame.timestampMs || 0) - currentTimeMs) <= 300
+      ? currentBallTrackingFrame
+      : undefined;
+  const ballTrailFrames = ballTrackingFrames
+    .filter((frame) => frame.timestampMs <= currentTimeMs && frame.ball)
+    .slice(-10);
+  const activeCoachingPainPoint = getActiveCoachingPainPoint(coachingPainPoints, currentTimeMs);
   const frameCount = poseFrames.length;
   const player = useVideoPlayer({ uri: videoUri }, (videoPlayer) => {
     videoPlayer.loop = true;
@@ -414,12 +513,25 @@ export default function SwingVideoSkeletonOverlay({
           surfaceType="textureView"
           style={StyleSheet.absoluteFill}
         />
-        <PoseOverlay frame={currentFrame} trackingFrame={currentTrackingFrame} overlaySize={overlaySize} />
+        <PoseOverlay
+          frame={currentFrame}
+          trackingFrame={currentTrackingFrame}
+          ballTrackingFrame={visibleBallTrackingFrame}
+          ballTrailFrames={ballTrailFrames}
+          overlaySize={overlaySize}
+        />
         <View pointerEvents="none" style={styles.frameBadge}>
           <Text style={styles.frameBadgeText}>
             {frameCount ? currentFrameIndex + 1 : 0}/{frameCount}
           </Text>
         </View>
+        {activeCoachingPainPoint ? (
+          <View pointerEvents="none" style={styles.coachingCue} testID="coaching-video-cue">
+            <Text style={styles.coachingCuePhase}>{activeCoachingPainPoint.phase}</Text>
+            <Text style={styles.coachingCueTitle}>{activeCoachingPainPoint.title}</Text>
+            <Text style={styles.coachingCueText}>{activeCoachingPainPoint.videoCue}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.controls}>
@@ -492,6 +604,12 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: '#bf5af2',
   },
+  trackingBallTrail: {
+    position: 'absolute',
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#ff453a',
+  },
   trackingPoint: {
     position: 'absolute',
     borderWidth: 2,
@@ -516,6 +634,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffd60a',
     borderColor: '#1c1c1e',
   },
+  trackingBall: {
+    backgroundColor: '#fff',
+    borderColor: '#ff453a',
+  },
   frameBadge: {
     position: 'absolute',
     right: 10,
@@ -531,6 +653,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  coachingCue: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 214, 10, 0.75)',
+  },
+  coachingCuePhase: {
+    color: '#ffd60a',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  coachingCueTitle: {
+    marginTop: 3,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  coachingCueText: {
+    marginTop: 3,
+    color: '#f2f2f7',
+    fontSize: 12,
+    lineHeight: 16,
   },
   controls: {
     minHeight: 56,

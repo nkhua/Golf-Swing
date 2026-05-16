@@ -34,6 +34,9 @@ export const normalizeSwingPayload = (payload, defaults = {}) => ({
   poseFrames: payload?.poseFrames || [],
   trackingFrames: payload?.trackingFrames || [],
   trackingSummary: payload?.trackingSummary || defaults.trackingSummary,
+  ballTrackingFrames: payload?.ballTrackingFrames || defaults.ballTrackingFrames || [],
+  ballFlightSummary: payload?.ballFlightSummary || defaults.ballFlightSummary,
+  swingCoaching: payload?.swingCoaching || defaults.swingCoaching,
   biomechanics: payload?.biomechanics || {},
   ballFlightEstimates: payload?.ballFlightEstimates,
   privacy: {

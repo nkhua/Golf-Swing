@@ -7,7 +7,13 @@ import type {
 
 const WINDOW_RADIUS = 1;
 const RAPID_MOTION_THRESHOLD = 0.15;
-const RAPID_MOTION_BLEND = 0.35;
+const RAPID_MOTION_BLEND = 0.5;
+const BASE_SMOOTHING_BLEND = 0.82;
+const LOW_VISIBILITY_THRESHOLD = 0.45;
+const LOW_VISIBILITY_BLEND = 0.92;
+const OUTLIER_DISTANCE_THRESHOLD = 0.18;
+const OUTLIER_NEIGHBOR_DISTANCE_THRESHOLD = 0.08;
+const OUTLIER_REPAIR_BLEND = 0.88;
 
 const distance = (a: SkeletonPoint3D, b: SkeletonPoint3D): number => {
   const dx = a.x - b.x;
@@ -32,6 +38,12 @@ const averagePoints = (points: SkeletonPoint3D[]): SkeletonPoint3D => {
     z: total.z / points.length,
   };
 };
+
+const midpoint = (a: SkeletonPoint3D, b: SkeletonPoint3D): SkeletonPoint3D => ({
+  x: (a.x + b.x) / 2,
+  y: (a.y + b.y) / 2,
+  z: (a.z + b.z) / 2,
+});
 
 const blendPoints = (
   current: SkeletonPoint3D,
@@ -65,6 +77,25 @@ const isRapidMotion = (
   return previousDelta > RAPID_MOTION_THRESHOLD || nextDelta > RAPID_MOTION_THRESHOLD;
 };
 
+const isTemporalOutlier = (
+  previous: SkeletonJoint | undefined,
+  current: SkeletonJoint,
+  next: SkeletonJoint | undefined
+): boolean => {
+  if (!previous || !next) {
+    return false;
+  }
+
+  return (
+    distance(previous.position, next.position) <= OUTLIER_NEIGHBOR_DISTANCE_THRESHOLD &&
+    distance(previous.position, current.position) >= OUTLIER_DISTANCE_THRESHOLD &&
+    distance(next.position, current.position) >= OUTLIER_DISTANCE_THRESHOLD
+  );
+};
+
+const isLowVisibility = (joint: SkeletonJoint): boolean =>
+  typeof joint.visibility === 'number' && joint.visibility < LOW_VISIBILITY_THRESHOLD;
+
 export function smoothSkeletonFrames(frames: SkeletonFrame[]): SkeletonFrame[] {
   return frames.map((frame, frameIndex) => {
     const smoothedJoints = { ...frame.joints };
@@ -93,14 +124,22 @@ export function smoothSkeletonFrames(frames: SkeletonFrame[]): SkeletonFrame[] {
       const averagedPosition = averagePoints(neighboringJoints.map((joint) => joint.position));
       const previousJoint = frames[frameIndex - 1]?.joints?.[jointName];
       const nextJoint = frames[frameIndex + 1]?.joints?.[jointName];
-      const blend = isRapidMotion(previousJoint, currentJoint, nextJoint)
-        ? RAPID_MOTION_BLEND
-        : 1;
+      const outlier = isTemporalOutlier(previousJoint, currentJoint, nextJoint);
+      const targetPosition = outlier && previousJoint && nextJoint
+        ? midpoint(previousJoint.position, nextJoint.position)
+        : averagedPosition;
+      const blend = outlier
+        ? OUTLIER_REPAIR_BLEND
+        : isLowVisibility(currentJoint)
+          ? LOW_VISIBILITY_BLEND
+          : isRapidMotion(previousJoint, currentJoint, nextJoint)
+            ? RAPID_MOTION_BLEND
+            : BASE_SMOOTHING_BLEND;
 
       const visibility = averageVisibility(neighboringJoints);
       smoothedJoints[jointName] = {
         ...currentJoint,
-        position: blendPoints(currentJoint.position, averagedPosition, blend),
+        position: blendPoints(currentJoint.position, targetPosition, blend),
         ...(typeof visibility === 'number' ? { visibility } : {}),
       };
     }

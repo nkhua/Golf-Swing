@@ -1,11 +1,13 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import SwingVideoSkeletonOverlay, {
+  getActiveCoachingPainPoint,
+  getNearestBallTrackingFrameIndex,
   getNearestPoseFrameIndex,
   getNearestTrackingFrameIndex,
   getVideoAspectRatio,
 } from '../components/SwingVideoSkeletonOverlay';
-import { createMockPoseFrames, createMockTrackingFrames } from '../services/model/mockPoseFrames';
+import { createMockBallTrackingFrames, createMockPoseFrames, createMockTrackingFrames } from '../services/model/mockPoseFrames';
 
 let mockLastPlayer;
 const mockUseVideoPlayer = jest.fn((source, setup) => {
@@ -24,6 +26,24 @@ const mockUseVideoPlayer = jest.fn((source, setup) => {
 });
 const mockUseEvent = jest.fn((_player, _eventName, initialValue) => initialValue);
 const mockUseEventListener = jest.fn();
+
+const mockCoachingPainPoints = [
+  {
+    id: 'impact-shaft-lean',
+    category: 'impact',
+    severity: 'high',
+    phase: 'impact',
+    title: 'Handle trails at impact',
+    evidence: 'Shaft lean is behind the ball.',
+    videoCue: 'Watch the grip point behind the club head at impact.',
+    timestampMs: 1420,
+    endTimestampMs: 1750,
+    recommendation: 'Move the handle ahead through impact.',
+    drill: 'Half-swing punch shots.',
+    relatedMetrics: ['shaftLeanAtImpactDegrees'],
+    confidence: 0.79,
+  },
+];
 
 jest.mock('expo', () => ({
   useEvent: (...args) => mockUseEvent(...args),
@@ -57,6 +77,10 @@ describe('SwingVideoSkeletonOverlay', () => {
     expect(getNearestPoseFrameIndex([], 1400)).toBe(0);
     expect(getNearestTrackingFrameIndex(createMockTrackingFrames(), 900)).toBe(2);
     expect(getNearestTrackingFrameIndex([], 900)).toBe(0);
+    expect(getNearestBallTrackingFrameIndex(createMockBallTrackingFrames(), 1750)).toBe(2);
+    expect(getNearestBallTrackingFrameIndex([], 1750)).toBe(0);
+    expect(getActiveCoachingPainPoint(mockCoachingPainPoints, 1500)?.id).toBe('impact-shaft-lean');
+    expect(getActiveCoachingPainPoint(mockCoachingPainPoints, 2500)).toBeUndefined();
     expect(getVideoAspectRatio({ width: 1080, height: 1920 })).toBeCloseTo(9 / 16);
     expect(getVideoAspectRatio({ width: 0, height: 0 })).toBeCloseTo(9 / 16);
   });
@@ -67,6 +91,8 @@ describe('SwingVideoSkeletonOverlay', () => {
         videoUri="file:///local-swing.mp4"
         poseFrames={createMockPoseFrames()}
         trackingFrames={createMockTrackingFrames()}
+        ballTrackingFrames={createMockBallTrackingFrames()}
+        coachingPainPoints={mockCoachingPainPoints}
         videoMetadata={{ fps: 60, width: 1080, height: 1920 }}
       />
     );
@@ -88,6 +114,17 @@ describe('SwingVideoSkeletonOverlay', () => {
     expect(screen.getByTestId('tracking-overlay-grip')).toBeTruthy();
     expect(screen.getByTestId('tracking-overlay-club-head')).toBeTruthy();
     expect(screen.getByTestId('tracking-overlay-club-shaft')).toBeTruthy();
+
+    const timeUpdate = mockUseEventListener.mock.calls.find((call) => call[1] === 'timeUpdate')[2];
+    act(() => {
+      timeUpdate({ currentTime: 1.6 });
+    });
+    expect(screen.getByTestId('ball-tracking-overlay-layer')).toBeTruthy();
+    expect(screen.getByTestId('ball-tracking-overlay-point')).toBeTruthy();
+    expect(screen.getAllByTestId('ball-tracking-overlay-trail').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('coaching-video-cue')).toBeTruthy();
+    expect(screen.getByText('Handle trails at impact')).toBeTruthy();
+
     expect(mockLastPlayer.source).toEqual({ uri: 'file:///local-swing.mp4' });
     expect(mockLastPlayer.loop).toBe(true);
     expect(mockLastPlayer.muted).toBe(true);

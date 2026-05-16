@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   pose_json JSON NOT NULL,
   tracking_json JSON NOT NULL,
   tracking_summary_json JSON NOT NULL,
+  ball_tracking_json JSON NOT NULL,
+  ball_flight_summary_json JSON NOT NULL,
+  coaching_json JSON NOT NULL,
   estimates_json JSON NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

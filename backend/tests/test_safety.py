@@ -73,6 +73,21 @@ def make_payload():
             'clubFrameCount': 1,
             'averageClubConfidence': 0.7,
         },
+        ballTrackingFrames=[
+            {
+                'frameIndex': 42,
+                'timestampMs': 1400,
+                'ball': {'x': 0.62, 'y': 0.48, 'confidence': 0.72, 'source': 'vision_motion'},
+            }
+        ],
+        ballFlightSummary={
+            'framesTracked': 1,
+            'ballFrameCount': 1,
+            'averageBallConfidence': 0.72,
+            'launchDirection': 'right',
+            'shotShape': 'fade',
+            'confidence': 0.55,
+        },
         biomechanics={'tempoRatio': 2.7, 'confidence': 0.5},
         privacy={'rawVideoUploaded': False, 'userConsentedToUpload': False},
     )
@@ -137,7 +152,9 @@ class SafetyTests(unittest.TestCase):
         payload = build_llm_payload(make_payload(), active_settings=settings)
         self.assertNotIn('poseFrames', payload)
         self.assertNotIn('trackingFrames', payload)
+        self.assertNotIn('ballTrackingFrames', payload)
         self.assertIn('trackingSummary', payload)
+        self.assertIn('ballFlightSummary', payload)
         self.assertIn('biomechanics', payload)
         self.assertIn('videoMetadata', payload)
 
@@ -151,7 +168,9 @@ class SafetyTests(unittest.TestCase):
 
         self.assertIn('poseFrames', payload)
         self.assertIn('trackingFrames', payload)
+        self.assertIn('ballTrackingFrames', payload)
         self.assertEqual(payload['trackingFrames'][0]['clubHead']['source'], 'vision_line')
+        self.assertEqual(payload['ballTrackingFrames'][0]['ball']['source'], 'vision_motion')
 
 
 if __name__ == '__main__':

@@ -23,7 +23,7 @@ app.add_middleware(
 
 UPLOAD_DIR = Path(__file__).resolve().parent / 'uploads'
 UPLOAD_DIR.mkdir(exist_ok=True)
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_UPLOAD_BYTES = 120 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
 
 
@@ -63,7 +63,7 @@ async def _process_uploaded_swing(video: UploadFile, user_consented_to_upload: b
                 bytes_written += len(chunk)
                 if bytes_written > MAX_UPLOAD_BYTES:
                     video_path.unlink(missing_ok=True)
-                    raise HTTPException(status_code=413, detail='Video file is too large. Limit uploads to 50 MB.')
+                    raise HTTPException(status_code=413, detail='Video file is too large. Limit uploads to 120 MB.')
                 out_file.write(chunk)
 
         try:

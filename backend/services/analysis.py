@@ -14,7 +14,9 @@ from mediapipe.tasks.python.vision.core import image as mp_image
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 
 from config import settings
+from services.ball_tracking import estimates_from_ball_summary, extract_ball_tracking
 from services.club_tracking import extract_swing_tracking
+from services.swing_coach import generate_swing_coaching
 from services.swing_trim import apply_swing_window, estimate_swing_window_from_pose, refine_swing_window_with_llm
 
 MODEL_URL = 'https://storage.googleapis.com/mediapipe-tasks/pose_landmarker/pose_landmarker_full.task'
@@ -276,14 +278,31 @@ def analyze_swing(video_path: str) -> dict:
             phases = {
                 **phases,
                 'address': swing_window.get('detectedStartMs', swing_window['startMs']),
-                'finish': swing_window['endMs'],
+                'finish': swing_window.get('detectedEndMs', swing_window['endMs']),
             }
 
     trimmed_frames = apply_swing_window(frames, swing_window)
     tracking_frames, tracking_summary = extract_swing_tracking(video_path, trimmed_frames, metadata, phases)
     tracking_done_at = perf_counter()
+    ball_tracking_frames, ball_flight_summary = extract_ball_tracking(video_path, metadata, phases, swing_window)
+    ball_tracking_done_at = perf_counter()
     analysis = compute_swing_metrics(trimmed_frames, metadata)
     metrics_done_at = perf_counter()
+    ball_flight_estimates = {
+        **(analysis.get('ballFlightEstimates') or {}),
+        **estimates_from_ball_summary(ball_flight_summary),
+    }
+    coaching_input = {
+        'videoMetadata': metadata,
+        'swingWindow': swing_window,
+        'phases': phases,
+        'trackingSummary': tracking_summary,
+        'ballFlightSummary': ball_flight_summary,
+        'biomechanics': analysis['biomechanics'],
+        'ballFlightEstimates': ball_flight_estimates,
+    }
+    swing_coaching, swing_metrics_sent_to_llm = generate_swing_coaching(coaching_input)
+    coaching_done_at = perf_counter()
     legacy_summary = analysis.get('legacySummary', {})
     video_frames_sent_to_llm = bool(settings.send_video_to_llm and settings.openai_api_key)
     payload = {
@@ -295,12 +314,16 @@ def analyze_swing(video_path: str) -> dict:
         'poseFrames': trimmed_frames,
         'trackingFrames': tracking_frames,
         'trackingSummary': tracking_summary,
+        'ballTrackingFrames': ball_tracking_frames,
+        'ballFlightSummary': ball_flight_summary,
+        'swingCoaching': swing_coaching,
         'biomechanics': analysis['biomechanics'],
-        'ballFlightEstimates': analysis.get('ballFlightEstimates'),
+        'ballFlightEstimates': ball_flight_estimates,
         'privacy': {
             'rawVideoUploaded': True,
             'userConsentedToUpload': True,
             'videoFramesSentToLlm': video_frames_sent_to_llm,
+            'swingMetricsSentToLlm': swing_metrics_sent_to_llm,
         },
         'analysisTime': datetime.utcnow().isoformat() + 'Z',
         'framesAnalyzed': len(trimmed_frames),
@@ -308,6 +331,8 @@ def analyze_swing(video_path: str) -> dict:
     }
     _log_stage('swing_window_and_llm_refinement', trim_done_at - pose_done_at)
     _log_stage('wrist_and_club_tracking', tracking_done_at - trim_done_at)
-    _log_stage('metrics', metrics_done_at - tracking_done_at)
+    _log_stage('ball_tracking', ball_tracking_done_at - tracking_done_at)
+    _log_stage('metrics', metrics_done_at - ball_tracking_done_at)
+    _log_stage('llm_swing_coaching', coaching_done_at - metrics_done_at)
     _log_stage('total', perf_counter() - started_at)
     return payload

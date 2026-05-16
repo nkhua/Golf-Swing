@@ -1,5 +1,5 @@
 import { normalizeSwingPayload } from './SwingAnalyzer';
-import { createMockPoseFrames, createMockTrackingFrames } from '../model/mockPoseFrames';
+import { createMockBallTrackingFrames, createMockPoseFrames, createMockTrackingFrames } from '../model/mockPoseFrames';
 
 export const createMockSwingAnalysisPayload = (source = 'on_device') =>
   normalizeSwingPayload({
@@ -7,7 +7,7 @@ export const createMockSwingAnalysisPayload = (source = 'on_device') =>
     source,
     videoMetadata: {
       fps: 60,
-      durationMs: 2200,
+      durationMs: 5600,
       width: 1080,
       height: 1920,
       cameraAngle: 'down_the_line',
@@ -16,13 +16,15 @@ export const createMockSwingAnalysisPayload = (source = 'on_device') =>
     swingWindow: {
       startMs: 250,
       detectedStartMs: 250,
-      endMs: 2100,
+      detectedEndMs: 2100,
+      endMs: 5200,
       startFrameIndex: 0,
-      endFrameIndex: 3,
+      endFrameIndex: 312,
       preRollMs: 0,
+      postRollMs: 3100,
       method: 'pose_motion',
       confidence: 0.78,
-      notes: 'Detected from mock pose motion.',
+      notes: 'Detected from mock pose motion with post-impact ball-flight playback.',
     },
     phases: {
       address: 250,
@@ -81,6 +83,73 @@ export const createMockSwingAnalysisPayload = (source = 'on_device') =>
       ],
       notes: 'Mock wrist, grip, shaft, and club-head tracks.',
     },
+    ballTrackingFrames: createMockBallTrackingFrames(),
+    ballFlightSummary: {
+      framesTracked: 6,
+      ballFrameCount: 6,
+      firstBallMs: 1420,
+      lastBallMs: 2800,
+      trackingStartMs: 1420,
+      trackingEndMs: 2800,
+      averageBallConfidence: 0.72,
+      launchDirection: 'right',
+      trajectoryAngleDegrees: 18.5,
+      apexHeightPx: 365,
+      carryDistancePx: 367,
+      ballPathLengthPx: 502,
+      maxBallSpeedPxPerSec: 1410,
+      curvaturePx: 24,
+      shotShape: 'fade',
+      trackingMethod: 'bright_motion_contours_after_impact',
+      confidence: 0.78,
+      quality: {
+        ballFrameRatio: 1,
+        needsLongerVideo: false,
+        needsRetake: false,
+        retakeReasons: [],
+      },
+      notes: 'Mock post-impact ball track.',
+    },
+    swingCoaching: {
+      status: 'generated',
+      model: 'mock-golf-coach',
+      generatedAt: '2026-05-15T00:00:00Z',
+      summary: 'The strongest pattern is a late impact cue: the shaft is leaning back while the ball starts right, so the first fix is improving handle position through impact.',
+      painPoints: [
+        {
+          id: 'impact-shaft-lean',
+          category: 'impact',
+          severity: 'high',
+          phase: 'impact',
+          title: 'Handle is arriving behind the club head',
+          evidence: 'Impact shaft lean is measured at -28 deg with a right-starting ball trace.',
+          videoCue: 'At impact, compare the grip point to the club head; the handle should not trail the head.',
+          timestampMs: 1420,
+          endTimestampMs: 1700,
+          recommendation: 'Feel the lead wrist flatter and the handle slightly ahead of the ball through impact.',
+          drill: 'Make half-speed punch swings stopping just after impact with the handle ahead of the club head.',
+          relatedMetrics: ['shaftLeanAtImpactDegrees', 'launchDirection', 'shotShape'],
+          confidence: 0.78,
+        },
+        {
+          id: 'head-turn-impact',
+          category: 'downswing',
+          severity: 'medium',
+          phase: 'impact',
+          title: 'Head and eye line leave the ball early',
+          evidence: 'The tracked head-turn proxy changes near impact while the eye-line cue is available.',
+          videoCue: 'Watch the head marker at impact; it should stay quiet until after the strike.',
+          timestampMs: 1420,
+          endTimestampMs: 1900,
+          recommendation: 'Keep your chest rotating while your eyes stay on the strike point a fraction longer.',
+          drill: 'Hit slow chips while holding your finish and naming the exact spot where the ball sat.',
+          relatedMetrics: ['headTurnAtImpact', 'eyeLineAngleAtImpact'],
+          confidence: 0.68,
+        },
+      ],
+      confidence: 0.75,
+      notes: 'Mock coaching generated from structured swing metrics.',
+    },
     biomechanics: {
       tempoRatio: 2.84,
       backswingTimeMs: 1050,
@@ -93,15 +162,16 @@ export const createMockSwingAnalysisPayload = (source = 'on_device') =>
       confidence: source === 'on_device' ? 0.45 : 0.55,
     },
     ballFlightEstimates: {
-      launchDirection: 'straight',
-      shotShape: 'unknown',
+      launchDirection: 'right',
+      shotShape: 'fade',
       spinTendency: 'unknown',
-      confidence: 0.1,
+      confidence: 0.78,
     },
     privacy: {
       rawVideoUploaded: source === 'server',
       userConsentedToUpload: source === 'server',
       videoFramesSentToLlm: false,
+      swingMetricsSentToLlm: false,
     },
   });
 

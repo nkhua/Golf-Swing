@@ -5,6 +5,7 @@ import { OnDeviceSwingAnalyzer } from '../services/analyzers/OnDeviceSwingAnalyz
 import { ServerSwingAnalyzer, getConfiguredBackendUrl } from '../services/analyzers/ServerSwingAnalyzer';
 
 const ANALYSIS_MODE = (process.env.EXPO_PUBLIC_ANALYSIS_MODE || 'server').toLowerCase();
+const BALL_FLIGHT_CAPTURE_DURATION_SECONDS = 16;
 
 const shouldUseServerFirst = () => ANALYSIS_MODE === 'server';
 
@@ -42,7 +43,7 @@ export default function CaptureScreen({ navigation }) {
     if (cameraRef.current && !isRecording) {
       try {
         setIsRecording(true);
-        const video = await cameraRef.current.recordAsync({ maxDuration: 10 });
+        const video = await cameraRef.current.recordAsync({ maxDuration: BALL_FLIGHT_CAPTURE_DURATION_SECONDS });
         setIsRecording(false);
         await analyzeOnDeviceFirst(video.uri);
       } catch (error) {
@@ -160,6 +161,7 @@ export default function CaptureScreen({ navigation }) {
       <View style={styles.instructions}>
         <Text style={styles.heading}>Back-view swing capture</Text>
         <Text style={styles.text}>Position the camera directly behind the player and keep the full body visible.</Text>
+        <Text style={styles.text}>Keep recording through impact and the first few seconds of ball flight.</Text>
         <View style={styles.statusPanel}>
           <Text style={styles.statusText}>Analysis: {getAnalysisModeLabel()}</Text>
           <Text style={styles.statusText}>Backend: {backendUrl || 'Not configured'}</Text>

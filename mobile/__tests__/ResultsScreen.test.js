@@ -25,10 +25,16 @@ describe('ResultsScreen', () => {
     expect(onDevice.getByText('Analyzer: On device')).toBeTruthy();
     expect(onDevice.getByText('Raw video uploaded: No')).toBeTruthy();
     expect(onDevice.getByText('Frames sent to LLM: No')).toBeTruthy();
+    expect(onDevice.getByText('Swing metrics sent to LLM: No')).toBeTruthy();
+    expect(onDevice.getByText('LLM Swing Coach')).toBeTruthy();
+    expect(onDevice.getByText('Handle is arriving behind the club head')).toBeTruthy();
     expect(onDevice.getByText('Swing Cut')).toBeTruthy();
     expect(onDevice.getByText('Body, Wrist, Eye, and Club Tracking')).toBeTruthy();
     expect(onDevice.getByText('Club frames: 4')).toBeTruthy();
     expect(onDevice.getByText('Avg left wrist angle: 145 deg')).toBeTruthy();
+    expect(onDevice.getByText('Estimated Ball Flight')).toBeTruthy();
+    expect(onDevice.getByText('Visible ball frames: 6')).toBeTruthy();
+    expect(onDevice.getByText('Max ball speed: 1410 px/s')).toBeTruthy();
 
     const server = render(
       <ResultsScreen route={{ params: { analysis: createMockSwingAnalysisPayload('server') } }} />

@@ -176,3 +176,25 @@ export const createMockTrackingFrames = () =>
       },
     };
   });
+
+export const createMockBallTrackingFrames = () => {
+  const samples = [
+    { frameIndex: 85, timestampMs: 1420, x: 0.52, y: 0.63, confidence: 0.74 },
+    { frameIndex: 96, timestampMs: 1600, x: 0.57, y: 0.58, confidence: 0.78 },
+    { frameIndex: 108, timestampMs: 1800, x: 0.63, y: 0.52, confidence: 0.8 },
+    { frameIndex: 123, timestampMs: 2050, x: 0.7, y: 0.47, confidence: 0.76 },
+    { frameIndex: 144, timestampMs: 2400, x: 0.78, y: 0.44, confidence: 0.68 },
+    { frameIndex: 168, timestampMs: 2800, x: 0.86, y: 0.46, confidence: 0.58 },
+  ];
+
+  return samples.map((sample) => ({
+    frameIndex: sample.frameIndex,
+    timestampMs: sample.timestampMs,
+    ball: {
+      x: sample.x,
+      y: sample.y,
+      confidence: sample.confidence,
+      source: 'vision_motion',
+    },
+  }));
+};

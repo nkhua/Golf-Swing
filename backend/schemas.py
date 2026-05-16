@@ -12,6 +12,7 @@ TrackingPointSource = Literal[
     'hand_landmark',
     'face_landmark',
     'vision_line',
+    'vision_motion',
     'temporal_prediction',
     'club_proxy',
 ]
@@ -104,6 +105,12 @@ class FrameTrackingData(BaseModel):
     quality: Dict[str, object] = Field(default_factory=dict)
 
 
+class FrameBallTrackingData(BaseModel):
+    frameIndex: int
+    timestampMs: int
+    ball: Optional[TrackedPoint] = None
+
+
 class SwingTrackingSummary(BaseModel):
     framesTracked: int = 0
     wristFrameCount: int = 0
@@ -127,6 +134,71 @@ class SwingTrackingSummary(BaseModel):
     notes: Optional[str] = None
 
 
+class BallFlightTrackingSummary(BaseModel):
+    framesTracked: int = 0
+    ballFrameCount: int = 0
+    firstBallMs: Optional[int] = None
+    lastBallMs: Optional[int] = None
+    trackingStartMs: Optional[int] = None
+    trackingEndMs: Optional[int] = None
+    averageBallConfidence: float = 0
+    launchDirection: Optional[Literal['left', 'straight', 'right']] = None
+    trajectoryAngleDegrees: Optional[float] = None
+    apexHeightPx: Optional[float] = None
+    carryDistancePx: Optional[float] = None
+    ballPathLengthPx: Optional[float] = None
+    maxBallSpeedPxPerSec: Optional[float] = None
+    curvaturePx: Optional[float] = None
+    shotShape: Optional[Literal['draw', 'fade', 'straight', 'unknown']] = None
+    trackingMethod: str = 'bright_motion_contours_after_impact'
+    confidence: float = 0
+    quality: Dict[str, object] = Field(default_factory=dict)
+    notes: Optional[str] = None
+
+
+class SwingCoachPainPoint(BaseModel):
+    id: str
+    category: Literal[
+        'setup',
+        'backswing',
+        'downswing',
+        'impact',
+        'follow_through',
+        'ball_flight',
+        'tracking_quality',
+    ]
+    severity: Literal['high', 'medium', 'low']
+    phase: Literal[
+        'address',
+        'takeaway',
+        'topOfBackswing',
+        'downswing',
+        'impact',
+        'finish',
+        'ballFlight',
+        'overall',
+    ]
+    title: str
+    evidence: str
+    videoCue: str
+    timestampMs: int
+    endTimestampMs: int
+    recommendation: str
+    drill: str
+    relatedMetrics: List[str] = Field(default_factory=list)
+    confidence: float = 0
+
+
+class SwingCoachingAnalysis(BaseModel):
+    status: Literal['generated', 'disabled', 'missing_api_key', 'failed', 'insufficient_evidence'] = 'disabled'
+    model: Optional[str] = None
+    generatedAt: Optional[str] = None
+    summary: Optional[str] = None
+    painPoints: List[SwingCoachPainPoint] = Field(default_factory=list)
+    confidence: float = 0
+    notes: Optional[str] = None
+
+
 class SwingPhaseTimestamps(BaseModel):
     address: Optional[int] = None
     takeaway: Optional[int] = None
@@ -138,10 +210,12 @@ class SwingPhaseTimestamps(BaseModel):
 class SwingTrimWindow(BaseModel):
     startMs: int = 0
     detectedStartMs: Optional[int] = None
+    detectedEndMs: Optional[int] = None
     endMs: int = 0
     startFrameIndex: int = 0
     endFrameIndex: int = 0
     preRollMs: int = 0
+    postRollMs: int = 0
     method: Literal['pose_motion', 'pose_motion_short_clip', 'llm_vision', 'fallback_full_video'] = 'fallback_full_video'
     confidence: float = 0
     notes: Optional[str] = None
@@ -175,6 +249,7 @@ class SwingPrivacyFlags(BaseModel):
     rawVideoUploaded: bool = False
     userConsentedToUpload: bool = False
     videoFramesSentToLlm: bool = False
+    swingMetricsSentToLlm: bool = False
 
 
 class SwingAnalysisPayload(BaseModel):
@@ -186,6 +261,9 @@ class SwingAnalysisPayload(BaseModel):
     poseFrames: List[FramePoseData] = Field(default_factory=list)
     trackingFrames: List[FrameTrackingData] = Field(default_factory=list)
     trackingSummary: SwingTrackingSummary = Field(default_factory=SwingTrackingSummary)
+    ballTrackingFrames: List[FrameBallTrackingData] = Field(default_factory=list)
+    ballFlightSummary: BallFlightTrackingSummary = Field(default_factory=BallFlightTrackingSummary)
+    swingCoaching: SwingCoachingAnalysis = Field(default_factory=SwingCoachingAnalysis)
     biomechanics: SwingBiomechanicsMetrics = Field(default_factory=SwingBiomechanicsMetrics)
     ballFlightEstimates: Optional[BallFlightEstimates] = None
     privacy: SwingPrivacyFlags = Field(default_factory=SwingPrivacyFlags)
@@ -207,4 +285,7 @@ class StoredAnalysisResult(BaseModel):
     poseJson: List[Dict]
     trackingJson: List[Dict] = Field(default_factory=list)
     trackingSummaryJson: Dict = Field(default_factory=dict)
+    ballTrackingJson: List[Dict] = Field(default_factory=list)
+    ballFlightSummaryJson: Dict = Field(default_factory=dict)
+    coachingJson: Dict = Field(default_factory=dict)
     estimatesJson: Optional[Dict] = None

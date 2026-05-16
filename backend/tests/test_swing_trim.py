@@ -48,7 +48,9 @@ class SwingTrimTests(unittest.TestCase):
         self.assertGreaterEqual(window['endMs'], window['startMs'] + 900)
         self.assertGreater(window['confidence'], 0.45)
         self.assertEqual(phases['address'], window['detectedStartMs'])
-        self.assertEqual(phases['finish'], window['endMs'])
+        self.assertEqual(phases['finish'], window['detectedEndMs'])
+        self.assertGreaterEqual(window['endMs'], window['detectedEndMs'])
+        self.assertEqual(window['postRollMs'], window['endMs'] - window['detectedEndMs'])
         self.assertGreaterEqual(phases['impact'], phases['topOfBackswing'])
 
     def test_motion_window_includes_two_second_preroll_before_detected_start(self):
@@ -80,6 +82,9 @@ class SwingTrimTests(unittest.TestCase):
         self.assertEqual(window['detectedStartMs'], 4500)
         self.assertEqual(window['startMs'], 2500)
         self.assertEqual(window['preRollMs'], 2000)
+        self.assertEqual(window['detectedEndMs'], 7200)
+        self.assertEqual(window['endMs'], 9000)
+        self.assertEqual(window['postRollMs'], 1800)
 
     def test_applies_window_to_pose_frames_without_emptying_data(self):
         frames = [

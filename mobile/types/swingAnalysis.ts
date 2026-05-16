@@ -32,6 +32,7 @@ export type TrackingPointSource =
   | 'hand_landmark'
   | 'face_landmark'
   | 'vision_line'
+  | 'vision_motion'
   | 'temporal_prediction'
   | 'club_proxy';
 
@@ -93,6 +94,12 @@ export type FrameTrackingData = {
   quality?: Record<string, number | string | boolean | null | undefined>;
 };
 
+export type FrameBallTrackingData = {
+  frameIndex: number;
+  timestampMs: number;
+  ball?: TrackedPoint;
+};
+
 export type SwingTrackingSummary = {
   framesTracked: number;
   wristFrameCount: number;
@@ -125,6 +132,74 @@ export type SwingTrackingSummary = {
   notes?: string;
 };
 
+export type BallFlightTrackingSummary = {
+  framesTracked: number;
+  ballFrameCount: number;
+  firstBallMs?: number;
+  lastBallMs?: number;
+  trackingStartMs?: number;
+  trackingEndMs?: number;
+  averageBallConfidence: number;
+  launchDirection?: 'left' | 'straight' | 'right';
+  trajectoryAngleDegrees?: number;
+  apexHeightPx?: number;
+  carryDistancePx?: number;
+  ballPathLengthPx?: number;
+  maxBallSpeedPxPerSec?: number;
+  curvaturePx?: number;
+  shotShape?: 'draw' | 'fade' | 'straight' | 'unknown';
+  trackingMethod?: string;
+  confidence: number;
+  quality?: {
+    ballFrameRatio?: number;
+    needsLongerVideo?: boolean;
+    needsRetake?: boolean;
+    retakeReasons?: string[];
+  };
+  notes?: string;
+};
+
+export type SwingCoachingPainPoint = {
+  id: string;
+  category:
+    | 'setup'
+    | 'backswing'
+    | 'downswing'
+    | 'impact'
+    | 'follow_through'
+    | 'ball_flight'
+    | 'tracking_quality';
+  severity: 'high' | 'medium' | 'low';
+  phase:
+    | 'address'
+    | 'takeaway'
+    | 'topOfBackswing'
+    | 'downswing'
+    | 'impact'
+    | 'finish'
+    | 'ballFlight'
+    | 'overall';
+  title: string;
+  evidence: string;
+  videoCue: string;
+  timestampMs: number;
+  endTimestampMs: number;
+  recommendation: string;
+  drill: string;
+  relatedMetrics: string[];
+  confidence: number;
+};
+
+export type SwingCoachingAnalysis = {
+  status: 'generated' | 'disabled' | 'missing_api_key' | 'failed' | 'insufficient_evidence';
+  model?: string;
+  generatedAt?: string;
+  summary?: string;
+  painPoints: SwingCoachingPainPoint[];
+  confidence: number;
+  notes?: string;
+};
+
 export type SwingPhaseTimestamps = {
   address?: number;
   takeaway?: number;
@@ -136,10 +211,12 @@ export type SwingPhaseTimestamps = {
 export type SwingTrimWindow = {
   startMs: number;
   detectedStartMs?: number;
+  detectedEndMs?: number;
   endMs: number;
   startFrameIndex: number;
   endFrameIndex: number;
   preRollMs?: number;
+  postRollMs?: number;
   method: 'pose_motion' | 'pose_motion_short_clip' | 'llm_vision' | 'fallback_full_video';
   confidence: number;
   notes?: string;
@@ -181,11 +258,15 @@ export type SwingAnalysisPayload = {
   poseFrames: FramePoseData[];
   trackingFrames: FrameTrackingData[];
   trackingSummary?: SwingTrackingSummary;
+  ballTrackingFrames?: FrameBallTrackingData[];
+  ballFlightSummary?: BallFlightTrackingSummary;
+  swingCoaching?: SwingCoachingAnalysis;
   biomechanics: SwingBiomechanicsMetrics;
   ballFlightEstimates?: BallFlightEstimates;
   privacy: {
     rawVideoUploaded: boolean;
     userConsentedToUpload: boolean;
     videoFramesSentToLlm?: boolean;
+    swingMetricsSentToLlm?: boolean;
   };
 };

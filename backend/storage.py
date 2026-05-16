@@ -26,6 +26,9 @@ class SwingRepository:
             poseJson=[dump_model(frame, exclude_none=True) for frame in payload.poseFrames],
             trackingJson=[dump_model(frame, exclude_none=True) for frame in payload.trackingFrames],
             trackingSummaryJson=dump_model(payload.trackingSummary, exclude_none=True),
+            ballTrackingJson=[dump_model(frame, exclude_none=True) for frame in payload.ballTrackingFrames],
+            ballFlightSummaryJson=dump_model(payload.ballFlightSummary, exclude_none=True),
+            coachingJson=dump_model(payload.swingCoaching, exclude_none=True),
             estimatesJson=dump_model(payload.ballFlightEstimates, exclude_none=True)
             if payload.ballFlightEstimates
             else None,

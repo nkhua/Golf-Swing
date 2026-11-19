@@ -81,15 +81,67 @@ def make_payload():
             }
         ],
         ballFlightSummary={
+            'status': 'tracked',
             'framesTracked': 1,
             'ballFrameCount': 1,
             'averageBallConfidence': 0.72,
             'launchDirection': 'right',
-            'shotShape': 'fade',
+            'actualShotShape': 'fade',
             'confidence': 0.55,
         },
+        launchMonitor={
+            'status': 'partial',
+            'measurementSystem': 'video_proxy_not_launch_monitor',
+            'metrics': {'clubSpeedPxPerSec': 640, 'ballSpeedPxPerSec': 1410},
+            'dataQuality': {'confidence': 0.4, 'missingMetrics': ['spinRateRpm']},
+        },
+        impactAnalysis={
+            'status': 'generated',
+            'analysisMode': 'ball_strike',
+            'impactTimestampMs': 1200,
+            'clubBallProximityPx': 12,
+            'contactQuality': {
+                'classification': 'likely_centered',
+                'confidence': 0.62,
+                'evidence': ['Club-ball proximity is 12 px.'],
+            },
+            'visualImpactInference': {'status': 'not_requested', 'framesSent': 0},
+            'dataQuality': {'confidence': 0.58, 'ballFlightAvailable': True},
+        },
+        drySwing={
+            'status': 'not_dry_swing',
+            'mode': 'ball_strike',
+            'actualBallFlightAvailable': True,
+            'predictedBallFlight': {'status': 'not_applicable', 'confidence': 0},
+            'biomechanicalFindings': [],
+            'practicePlan': [],
+            'dataQuality': {'confidence': 0, 'ballFlightStatus': 'tracked'},
+        },
+        swingDiagnosis={
+            'status': 'generated',
+            'analysisMode': 'ball_strike',
+            'llmRole': 'wording_only',
+            'priorities': [
+                {
+                    'id': 'impact-handle-trails',
+                    'category': 'impact',
+                    'severity': 'high',
+                    'phase': 'impact',
+                    'timestampMs': 1200,
+                    'endTimestampMs': 1650,
+                    'title': 'Handle trails at impact',
+                    'evidence': 'Impact shaft lean is behind.',
+                    'videoCue': 'Watch impact.',
+                    'recommendation': 'Move handle forward.',
+                    'drill': 'Punch shots.',
+                    'relatedMetrics': ['shaftLeanAtImpactDegrees'],
+                    'confidence': 0.72,
+                }
+            ],
+            'dataQuality': {'confidence': 0.72},
+        },
         biomechanics={'tempoRatio': 2.7, 'confidence': 0.5},
-        privacy={'rawVideoUploaded': False, 'userConsentedToUpload': False},
+        privacy={'rawVideoUploaded': False, 'userConsentedToUpload': False, 'impactFramesSentToLlm': False},
     )
 
 
@@ -155,6 +207,10 @@ class SafetyTests(unittest.TestCase):
         self.assertNotIn('ballTrackingFrames', payload)
         self.assertIn('trackingSummary', payload)
         self.assertIn('ballFlightSummary', payload)
+        self.assertIn('launchMonitor', payload)
+        self.assertIn('impactAnalysis', payload)
+        self.assertIn('drySwing', payload)
+        self.assertIn('swingDiagnosis', payload)
         self.assertIn('biomechanics', payload)
         self.assertIn('videoMetadata', payload)
 

@@ -195,6 +195,8 @@ export const createMockBallTrackingFrames = () => {
       y: sample.y,
       confidence: sample.confidence,
       source: 'vision_motion',
+      radiusPx: 5,
+      diameterPx: 10,
     },
   }));
 };

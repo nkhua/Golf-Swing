@@ -15,7 +15,11 @@ from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTa
 
 from config import settings
 from services.ball_tracking import estimates_from_ball_summary, extract_ball_tracking
-from services.club_tracking import extract_swing_tracking
+from services.club_tracking import estimate_club_face_proxy, extract_swing_tracking
+from services.dry_swing import analyze_dry_swing
+from services.impact_analysis import analyze_impact_strike
+from services.launch_monitor import estimate_launch_monitor_metrics
+from services.swing_diagnosis import build_swing_diagnosis
 from services.swing_coach import generate_swing_coaching
 from services.swing_trim import apply_swing_window, estimate_swing_window_from_pose, refine_swing_window_with_llm
 
@@ -211,7 +215,7 @@ def compute_swing_metrics(frames: List[Dict[str, object]], metadata: Dict[str, o
                 'confidence': 0,
             },
             'ballFlightEstimates': {
-                'shotShape': 'unknown',
+                'actualShotShape': 'unknown',
                 'spinTendency': 'unknown',
                 'confidence': 0,
             },
@@ -246,7 +250,7 @@ def compute_swing_metrics(frames: List[Dict[str, object]], metadata: Dict[str, o
         },
         'ballFlightEstimates': {
             # Pose-only ball flight is a rough estimate and needs launch-monitor calibration.
-            'shotShape': 'unknown',
+            'actualShotShape': 'unknown',
             'spinTendency': 'unknown',
             'confidence': 0.05,
         },
@@ -286,18 +290,76 @@ def analyze_swing(video_path: str) -> dict:
     tracking_done_at = perf_counter()
     ball_tracking_frames, ball_flight_summary = extract_ball_tracking(video_path, metadata, phases, swing_window)
     ball_tracking_done_at = perf_counter()
+    club_face_estimate = estimate_club_face_proxy(
+        tracking_frames,
+        metadata,
+        phases,
+        ball_flight_summary,
+        tracking_summary,
+    )
+    tracked_feature_set = list(tracking_summary.get('trackedFeatureSet') or [])
+    if 'club_face_proxy_from_ball_start_and_club_path' not in tracked_feature_set:
+        tracked_feature_set.append('club_face_proxy_from_ball_start_and_club_path')
+    tracking_summary = {
+        **tracking_summary,
+        'golfMetrics': {
+            **(tracking_summary.get('golfMetrics') or {}),
+            'clubFaceEstimate': club_face_estimate,
+        },
+        'trackedFeatureSet': tracked_feature_set,
+    }
     analysis = compute_swing_metrics(trimmed_frames, metadata)
     metrics_done_at = perf_counter()
     ball_flight_estimates = {
         **(analysis.get('ballFlightEstimates') or {}),
         **estimates_from_ball_summary(ball_flight_summary),
     }
+    launch_monitor = estimate_launch_monitor_metrics(
+        metadata,
+        tracking_frames,
+        tracking_summary,
+        ball_tracking_frames,
+        ball_flight_summary,
+        phases,
+        club_face_estimate,
+    )
+    impact_analysis, impact_frames_sent_to_llm = analyze_impact_strike(
+        video_path,
+        metadata,
+        tracking_frames,
+        tracking_summary,
+        ball_tracking_frames,
+        ball_flight_summary,
+        phases,
+        launch_monitor,
+        club_face_estimate,
+    )
+    dry_swing = analyze_dry_swing(
+        analysis['biomechanics'],
+        tracking_summary,
+        launch_monitor,
+        ball_flight_summary,
+        phases,
+    )
+    swing_diagnosis = build_swing_diagnosis(
+        analysis['biomechanics'],
+        tracking_summary,
+        ball_flight_summary,
+        launch_monitor,
+        dry_swing,
+        phases,
+        impact_analysis=impact_analysis,
+    )
     coaching_input = {
         'videoMetadata': metadata,
         'swingWindow': swing_window,
         'phases': phases,
         'trackingSummary': tracking_summary,
         'ballFlightSummary': ball_flight_summary,
+        'launchMonitor': launch_monitor,
+        'impactAnalysis': impact_analysis,
+        'drySwing': dry_swing,
+        'swingDiagnosis': swing_diagnosis,
         'biomechanics': analysis['biomechanics'],
         'ballFlightEstimates': ball_flight_estimates,
     }
@@ -316,6 +378,10 @@ def analyze_swing(video_path: str) -> dict:
         'trackingSummary': tracking_summary,
         'ballTrackingFrames': ball_tracking_frames,
         'ballFlightSummary': ball_flight_summary,
+        'launchMonitor': launch_monitor,
+        'impactAnalysis': impact_analysis,
+        'drySwing': dry_swing,
+        'swingDiagnosis': swing_diagnosis,
         'swingCoaching': swing_coaching,
         'biomechanics': analysis['biomechanics'],
         'ballFlightEstimates': ball_flight_estimates,
@@ -323,6 +389,7 @@ def analyze_swing(video_path: str) -> dict:
             'rawVideoUploaded': True,
             'userConsentedToUpload': True,
             'videoFramesSentToLlm': video_frames_sent_to_llm,
+            'impactFramesSentToLlm': impact_frames_sent_to_llm,
             'swingMetricsSentToLlm': swing_metrics_sent_to_llm,
         },
         'analysisTime': datetime.utcnow().isoformat() + 'Z',

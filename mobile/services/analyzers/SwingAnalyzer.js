@@ -21,6 +21,17 @@ export const createFallbackVideoMetadata = (overrides = {}) => ({
   ...overrides,
 });
 
+const normalizeActualShotShape = (value) => {
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return {
+    ...value,
+    actualShotShape: value.actualShotShape,
+  };
+};
+
 export const normalizeSwingPayload = (payload, defaults = {}) => ({
   swingId: payload?.swingId || defaults.swingId || `swing-${Date.now()}`,
   source: payload?.source || defaults.source || 'server',
@@ -35,10 +46,14 @@ export const normalizeSwingPayload = (payload, defaults = {}) => ({
   trackingFrames: payload?.trackingFrames || [],
   trackingSummary: payload?.trackingSummary || defaults.trackingSummary,
   ballTrackingFrames: payload?.ballTrackingFrames || defaults.ballTrackingFrames || [],
-  ballFlightSummary: payload?.ballFlightSummary || defaults.ballFlightSummary,
+  ballFlightSummary: normalizeActualShotShape(payload?.ballFlightSummary || defaults.ballFlightSummary),
+  launchMonitor: payload?.launchMonitor || defaults.launchMonitor,
+  impactAnalysis: payload?.impactAnalysis || defaults.impactAnalysis,
+  drySwing: payload?.drySwing || defaults.drySwing,
+  swingDiagnosis: payload?.swingDiagnosis || defaults.swingDiagnosis,
   swingCoaching: payload?.swingCoaching || defaults.swingCoaching,
   biomechanics: payload?.biomechanics || {},
-  ballFlightEstimates: payload?.ballFlightEstimates,
+  ballFlightEstimates: normalizeActualShotShape(payload?.ballFlightEstimates),
   privacy: {
     rawVideoUploaded: Boolean(payload?.privacy?.rawVideoUploaded),
     userConsentedToUpload: Boolean(payload?.privacy?.userConsentedToUpload),

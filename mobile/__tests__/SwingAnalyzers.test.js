@@ -20,6 +20,15 @@ describe('mock swing analyzers', () => {
       expect(result.ballTrackingFrames[0]).toHaveProperty('ball');
       expect(result.ballFlightSummary).toHaveProperty('ballFrameCount');
       expect(result.ballFlightSummary.quality.needsRetake).toBe(false);
+      expect(result.launchMonitor).toHaveProperty('status', 'estimated');
+      expect(result.launchMonitor.metrics).toHaveProperty('clubSpeedMph');
+      expect(result.launchMonitor.dataQuality.missingMetrics).toContain('spinRateRpm');
+      expect(result.impactAnalysis).toHaveProperty('status', 'generated');
+      expect(result.impactAnalysis.contactQuality).toHaveProperty('classification', 'likely_centered');
+      expect(result.drySwing).toHaveProperty('status', 'not_dry_swing');
+      expect(result.swingDiagnosis).toHaveProperty('llmRole', 'wording_only');
+      expect(result.swingDiagnosis.expectedActualComparison).toHaveProperty('trainingSignal', 'tracking_or_strike_uncertainty');
+      expect(result.swingDiagnosis.priorities[0]).toHaveProperty('id', 'impact-handle-trails');
       expect(result.swingCoaching).toHaveProperty('status', 'generated');
       expect(result.swingCoaching.painPoints[0]).toHaveProperty('timestampMs', 1420);
       expect(result.biomechanics).toHaveProperty('tempoRatio');
@@ -33,6 +42,7 @@ describe('mock swing analyzers', () => {
       expect(result.privacy).toHaveProperty('rawVideoUploaded');
       expect(result.privacy).toHaveProperty('userConsentedToUpload');
       expect(result.privacy).toHaveProperty('videoFramesSentToLlm');
+      expect(result.privacy).toHaveProperty('impactFramesSentToLlm');
       expect(result.privacy).toHaveProperty('swingMetricsSentToLlm');
     }
 

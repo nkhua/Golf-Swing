@@ -2,10 +2,16 @@ import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import SwingVideoSkeletonOverlay, {
   getActiveCoachingPainPoint,
+  getCoachingMarkerPositionPercent,
+  getClubPathTrailFrames,
   getNearestBallTrackingFrameIndex,
   getNearestPoseFrameIndex,
   getNearestTrackingFrameIndex,
   getVideoAspectRatio,
+  interpolatePoseFrame,
+  interpolateTrackingFrame,
+  smoothPoseFramesForOverlay,
+  smoothTrackingFramesForOverlay,
 } from '../components/SwingVideoSkeletonOverlay';
 import { createMockBallTrackingFrames, createMockPoseFrames, createMockTrackingFrames } from '../services/model/mockPoseFrames';
 
@@ -79,10 +85,61 @@ describe('SwingVideoSkeletonOverlay', () => {
     expect(getNearestTrackingFrameIndex([], 900)).toBe(0);
     expect(getNearestBallTrackingFrameIndex(createMockBallTrackingFrames(), 1750)).toBe(2);
     expect(getNearestBallTrackingFrameIndex([], 1750)).toBe(0);
+    expect(getClubPathTrailFrames(createMockTrackingFrames(), 1100, 0)).toHaveLength(3);
     expect(getActiveCoachingPainPoint(mockCoachingPainPoints, 1500)?.id).toBe('impact-shaft-lean');
     expect(getActiveCoachingPainPoint(mockCoachingPainPoints, 2500)).toBeUndefined();
+    expect(getCoachingMarkerPositionPercent(mockCoachingPainPoints[0], 250, 5200)).toBeCloseTo(23.64);
     expect(getVideoAspectRatio({ width: 1080, height: 1920 })).toBeCloseTo(9 / 16);
     expect(getVideoAspectRatio({ width: 0, height: 0 })).toBeCloseTo(9 / 16);
+  });
+
+  it('smooths and interpolates overlay frames to reduce point jitter', () => {
+    const jitteryPoseFrames = [
+      {
+        frameIndex: 0,
+        timestampMs: 0,
+        landmarks: [{ name: 'LEFT_WRIST', x: 0.4, y: 0.5, z: 0, visibility: 0.9 }],
+      },
+      {
+        frameIndex: 1,
+        timestampMs: 33,
+        landmarks: [{ name: 'LEFT_WRIST', x: 0.8, y: 0.5, z: 0, visibility: 0.9 }],
+      },
+      {
+        frameIndex: 2,
+        timestampMs: 66,
+        landmarks: [{ name: 'LEFT_WRIST', x: 0.42, y: 0.5, z: 0, visibility: 0.9 }],
+      },
+    ];
+    const smoothedPoseFrames = smoothPoseFramesForOverlay(jitteryPoseFrames);
+    const middleWrist = smoothedPoseFrames[1].landmarks.find((landmark) => landmark.name === 'LEFT_WRIST');
+    expect(middleWrist.x).toBeLessThan(0.7);
+
+    const interpolatedPose = interpolatePoseFrame(smoothedPoseFrames, 16);
+    const wristAtHalfTime = interpolatedPose.landmarks.find((landmark) => landmark.name === 'LEFT_WRIST');
+    expect(wristAtHalfTime.x).toBeGreaterThan(smoothedPoseFrames[0].landmarks[0].x);
+    expect(wristAtHalfTime.x).toBeLessThan(smoothedPoseFrames[1].landmarks[0].x);
+
+    const trackingFrames = [
+      {
+        frameIndex: 0,
+        timestampMs: 0,
+        clubHead: { x: 0.3, y: 0.7, confidence: 0.7, source: 'vision_line' },
+      },
+      {
+        frameIndex: 1,
+        timestampMs: 33,
+        clubHead: { x: 0.9, y: 0.2, confidence: 0.7, source: 'vision_line' },
+      },
+      {
+        frameIndex: 2,
+        timestampMs: 66,
+        clubHead: { x: 0.34, y: 0.68, confidence: 0.7, source: 'vision_line' },
+      },
+    ];
+    const smoothedTrackingFrames = smoothTrackingFramesForOverlay(trackingFrames);
+    expect(smoothedTrackingFrames[1].clubHead.x).toBeLessThan(0.76);
+    expect(interpolateTrackingFrame(smoothedTrackingFrames, 16).clubHead.x).toBeGreaterThan(0.3);
   });
 
   it('renders video with a pose overlay and playback controls', () => {
@@ -114,16 +171,22 @@ describe('SwingVideoSkeletonOverlay', () => {
     expect(screen.getByTestId('tracking-overlay-grip')).toBeTruthy();
     expect(screen.getByTestId('tracking-overlay-club-head')).toBeTruthy();
     expect(screen.getByTestId('tracking-overlay-club-shaft')).toBeTruthy();
+    expect(screen.getByTestId('club-face-overlay-marker')).toBeTruthy();
 
     const timeUpdate = mockUseEventListener.mock.calls.find((call) => call[1] === 'timeUpdate')[2];
     act(() => {
       timeUpdate({ currentTime: 1.6 });
     });
+    expect(screen.getByTestId('club-path-overlay-layer')).toBeTruthy();
+    expect(screen.getAllByTestId('club-path-overlay-trail').length).toBeGreaterThan(0);
     expect(screen.getByTestId('ball-tracking-overlay-layer')).toBeTruthy();
     expect(screen.getByTestId('ball-tracking-overlay-point')).toBeTruthy();
     expect(screen.getAllByTestId('ball-tracking-overlay-trail').length).toBeGreaterThan(0);
     expect(screen.getByTestId('coaching-video-cue')).toBeTruthy();
     expect(screen.getByText('Handle trails at impact')).toBeTruthy();
+    expect(screen.getByTestId('coaching-timeline')).toBeTruthy();
+    expect(screen.getAllByTestId('coaching-timeline-marker')).toHaveLength(1);
+    expect(screen.getAllByTestId('coaching-moment-chip')).toHaveLength(1);
 
     expect(mockLastPlayer.source).toEqual({ uri: 'file:///local-swing.mp4' });
     expect(mockLastPlayer.loop).toBe(true);
@@ -141,6 +204,12 @@ describe('SwingVideoSkeletonOverlay', () => {
     mockLastPlayer.currentTime = 1.2;
     fireEvent.press(screen.getByText('Restart'));
     expect(mockLastPlayer.currentTime).toBe(0);
+
+    const playerBeforeSeek = mockLastPlayer;
+    act(() => {
+      fireEvent.press(screen.getByText('1. 1.4s'));
+    });
+    expect(playerBeforeSeek.currentTime).toBeCloseTo(1.42);
   });
 
   it('starts, restarts, and loops inside the detected swing window', () => {

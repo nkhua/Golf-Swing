@@ -929,6 +929,226 @@ def _phase_metric(
     return None
 
 
+def _confidence(value: object) -> float:
+    try:
+        return _clamp(float(value or 0), 0, 1)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _face_bucket_from_degrees(angle_degrees: Optional[float], confidence: float) -> str:
+    if angle_degrees is None or confidence < 0.2:
+        return 'unknown'
+    if abs(angle_degrees) <= 2:
+        return 'square'
+    return 'open' if angle_degrees > 0 else 'closed'
+
+
+def _path_bucket_from_degrees(path_degrees: Optional[float], confidence: float) -> str:
+    if path_degrees is None or confidence < 0.2:
+        return 'unknown'
+    if abs(path_degrees) <= 3:
+        return 'neutral'
+    return 'in_to_out' if path_degrees > 0 else 'out_to_in'
+
+
+def _launch_direction_face_degrees(ball_flight_summary: Dict[str, object]) -> Tuple[Optional[float], str, float]:
+    ball_confidence = _confidence(ball_flight_summary.get('confidence'))
+    launch_direction = ball_flight_summary.get('launchDirection')
+    if (
+        ball_confidence < 0.35
+        or not isinstance(launch_direction, str)
+        or launch_direction not in {'left', 'straight', 'right'}
+    ):
+        return None, 'unknown', ball_confidence
+
+    # The ball tracker currently returns direction buckets, not calibrated horizontal
+    # launch degrees. These degree values are bucket midpoints for LLM context only.
+    degrees_by_direction = {
+        'left': -6.0,
+        'straight': 0.0,
+        'right': 6.0,
+    }
+    estimated_degrees = degrees_by_direction[str(launch_direction)]
+    return estimated_degrees, _face_bucket_from_degrees(estimated_degrees, ball_confidence), ball_confidence
+
+
+def _impact_timestamp_ms(
+    frames: List[TrackingFrame],
+    phases: Optional[Dict[str, object]],
+    tracking_summary: Optional[Dict[str, object]],
+) -> Optional[int]:
+    for candidate in (
+        phases.get('impact') if phases else None,
+        tracking_summary.get('estimatedImpactMs') if tracking_summary else None,
+    ):
+        try:
+            if candidate is not None:
+                return int(candidate)
+        except (TypeError, ValueError):
+            continue
+
+    timestamps = [
+        int(frame_data.get('timestampMs') or 0)
+        for frame_data in frames
+        if frame_data.get('timestampMs') is not None
+    ]
+    if not timestamps:
+        return None
+    return timestamps[len(timestamps) // 2]
+
+
+def _club_path_proxy_around_impact(
+    frames: List[TrackingFrame],
+    metadata: Dict[str, object],
+    impact_ms: Optional[int],
+) -> Dict[str, object]:
+    width = int(metadata.get('width') or 0)
+    height = int(metadata.get('height') or 0)
+    if not frames or width <= 0 or height <= 0:
+        return {
+            'clubPathProxy': 'unknown',
+            'clubPathDegrees': None,
+            'confidence': 0,
+            'sampleCount': 0,
+        }
+
+    valid_samples = [
+        frame_data
+        for frame_data in frames
+        if isinstance(frame_data.get('clubHead'), dict)
+        and float(frame_data['clubHead'].get('confidence') or 0) >= MIN_CLUB_CONFIDENCE_FOR_SUMMARY
+    ]
+    if impact_ms is not None:
+        impact_window = [
+            frame_data
+            for frame_data in valid_samples
+            if abs(int(frame_data.get('timestampMs') or 0) - impact_ms) <= 450
+        ]
+        if len(impact_window) >= 2:
+            valid_samples = impact_window
+
+    valid_samples = sorted(valid_samples, key=lambda frame_data: int(frame_data.get('timestampMs') or 0))
+    if len(valid_samples) < 2:
+        return {
+            'clubPathProxy': 'unknown',
+            'clubPathDegrees': None,
+            'confidence': 0,
+            'sampleCount': len(valid_samples),
+        }
+
+    first = valid_samples[0]
+    last = valid_samples[-1]
+    first_point = first['clubHead']
+    last_point = last['clubHead']
+    first_x, first_y = _normalized_to_pixel(first_point, width, height)
+    last_x, last_y = _normalized_to_pixel(last_point, width, height)
+    dx_px = last_x - first_x
+    dy_px = last_y - first_y
+    distance_px = sqrt(dx_px * dx_px + dy_px * dy_px)
+    vertical_scale = max(abs(dy_px), height * 0.08, 1)
+    path_degrees = round(_clamp(degrees(atan2(dx_px, vertical_scale)), -14, 14), 2)
+    average_confidence = (
+        float(first_point.get('confidence') or 0) + float(last_point.get('confidence') or 0)
+    ) / 2
+    sample_factor = _clamp(len(valid_samples) / 5, 0.35, 1)
+    motion_factor = _clamp(distance_px / max(width * 0.08, 1), 0.25, 1)
+    confidence = _clamp(average_confidence * sample_factor * motion_factor, 0, 0.88)
+
+    return {
+        'clubPathProxy': _path_bucket_from_degrees(path_degrees, confidence),
+        'clubPathDegrees': path_degrees,
+        'confidence': round(confidence, 3),
+        'sampleCount': len(valid_samples),
+        'impactWindowMs': 450 if impact_ms is not None else None,
+        'deltaXPx': round(dx_px, 2),
+        'deltaYPx': round(dy_px, 2),
+        'distancePx': round(distance_px, 2),
+        'startTimestampMs': int(first.get('timestampMs') or 0),
+        'endTimestampMs': int(last.get('timestampMs') or 0),
+    }
+
+
+def estimate_club_face_proxy(
+    frames: List[TrackingFrame],
+    metadata: Dict[str, object],
+    phases: Optional[Dict[str, object]],
+    ball_flight_summary: Optional[Dict[str, object]],
+    tracking_summary: Optional[Dict[str, object]] = None,
+) -> Dict[str, object]:
+    """Estimate impact delivery features useful to the LLM.
+
+    This is intentionally a proxy. Normal phone video does not expose the true
+    club-face plane at impact, so the estimate combines ball start direction and
+    screen-space club-head path with confidence and limitations.
+    """
+    ball_flight_summary = ball_flight_summary or {}
+    tracking_summary = tracking_summary or {}
+    impact_ms = _impact_timestamp_ms(frames, phases, tracking_summary)
+    estimated_face_degrees, face_to_target, ball_confidence = _launch_direction_face_degrees(ball_flight_summary)
+    club_path = _club_path_proxy_around_impact(frames, metadata, impact_ms)
+    path_degrees = club_path.get('clubPathDegrees') if isinstance(club_path.get('clubPathDegrees'), (int, float)) else None
+    path_confidence = _confidence(club_path.get('confidence'))
+    quality = tracking_summary.get('quality') if isinstance(tracking_summary.get('quality'), dict) else {}
+    tracking_confidence = _confidence(quality.get('overallTrackingConfidence'))
+
+    estimated_face_to_path = None
+    if estimated_face_degrees is not None and path_degrees is not None and path_confidence >= 0.2:
+        estimated_face_to_path = round(estimated_face_degrees - float(path_degrees), 2)
+
+    face_to_path = _face_bucket_from_degrees(
+        estimated_face_to_path,
+        min(ball_confidence, path_confidence) if estimated_face_to_path is not None else 0,
+    )
+    confidence_parts = []
+    if estimated_face_degrees is not None:
+        confidence_parts.append(ball_confidence * 0.62)
+    if path_degrees is not None:
+        confidence_parts.append(path_confidence * 0.28)
+    if tracking_confidence:
+        confidence_parts.append(tracking_confidence * 0.10)
+    confidence = _clamp(sum(confidence_parts), 0, 0.82)
+
+    if face_to_target != 'unknown' and face_to_path != 'unknown':
+        status = 'estimated'
+    elif face_to_target != 'unknown' or club_path.get('clubPathProxy') != 'unknown':
+        status = 'partial'
+    else:
+        status = 'insufficient_evidence'
+
+    evidence = [
+        f"Ball launch direction bucket: {ball_flight_summary.get('launchDirection') or 'unknown'}",
+        f"Ball tracking confidence: {round(ball_confidence, 3)}",
+        f"Club path proxy: {club_path.get('clubPathProxy')}",
+        f"Club path proxy confidence: {club_path.get('confidence')}",
+        f"Impact timestamp used: {impact_ms if impact_ms is not None else 'unknown'} ms",
+    ]
+
+    return {
+        'status': status,
+        'measurementType': 'video_proxy_not_launch_monitor',
+        'faceToTarget': face_to_target,
+        'faceToPath': face_to_path,
+        'clubPathProxy': club_path.get('clubPathProxy'),
+        'ballStartDirection': ball_flight_summary.get('launchDirection') or 'unknown',
+        'estimatedDegreesToTarget': _safe_round(estimated_face_degrees),
+        'estimatedDegreesToPath': _safe_round(estimated_face_to_path),
+        'clubPathDegrees': _safe_round(path_degrees),
+        'confidence': round(confidence, 3),
+        'impactTimestampMs': impact_ms,
+        'clubPathEvidence': club_path,
+        'evidence': evidence,
+        'assumptions': [
+            'Positive/right bucket is treated as open to target for a right-handed down-the-line view.',
+            'Club path is inferred from screen-space club-head motion near impact.',
+        ],
+        'limitations': [
+            'This is not a measured club-face angle; it needs launch-monitor or calibrated multi-camera validation.',
+            'Off-center strike, camera alignment, handedness, and motion blur can change the true face/path relationship.',
+        ],
+    }
+
+
 def summarize_tracking_frames(
     frames: List[TrackingFrame],
     metadata: Dict[str, object],

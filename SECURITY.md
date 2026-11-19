@@ -70,6 +70,8 @@ Structured pose and metric JSON can be submitted to `POST /swings/analysis` with
 
 Logging helpers redact keys such as API keys, tokens, secrets, passwords, and database URLs. Pose/frame data is excluded unless sensitive logging is explicitly enabled.
 
-LLM payload helpers block raw video and exclude full pose arrays by default. The intended AI-safe payload contains summarized metadata, phases, biomechanics, tracking summaries, ball-flight summaries, and estimates only.
+LLM payload helpers block raw video and exclude full pose arrays by default. The intended AI-safe payload contains summarized metadata, phases, biomechanics, tracking summaries, impact analysis, launch-monitor proxy metrics, dry-swing findings, deterministic swing diagnosis, ball-flight summaries, and estimates only.
 
-When `ENABLE_LLM_SWING_COACHING=true`, the backend sends summarized swing evidence to the configured coaching model and stores the structured coaching response as `swingCoaching`. The mobile app can display those pain points on the video timeline without sending raw video to the coaching LLM.
+When `ENABLE_LLM_SWING_COACHING=true`, the backend sends summarized swing evidence to the configured coaching model and stores the structured coaching response as `swingCoaching`. The deterministic `swingDiagnosis` object tells the model which issues are allowed; if no validated ball exists, `drySwing` tells the model which ball flight is predicted versus actual. The mobile app can display those pain points on the video timeline without sending raw video to the coaching LLM.
+
+When `ENABLE_LLM_IMPACT_ANALYSIS=true` and `SEND_VIDEO_TO_LLM=true`, the backend may send a few impact-area JPEG crops to the configured vision model, but only after a validated ball track exists. Dry swings and no-ball recordings skip this path and record no strike-location claims.

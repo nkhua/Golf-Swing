@@ -40,6 +40,9 @@ def sanitize_log_payload(payload: SwingAnalysisPayload, active_settings: Setting
         data['biomechanics'] = dump_model(payload.biomechanics, exclude_none=True)
         data['trackingSummary'] = dump_model(payload.trackingSummary, exclude_none=True)
         data['ballFlightSummary'] = dump_model(payload.ballFlightSummary, exclude_none=True)
+        data['drySwing'] = payload.drySwing
+        data['impactAnalysis'] = payload.impactAnalysis
+        data['swingDiagnosis'] = payload.swingDiagnosis
         data['swingCoaching'] = dump_model(payload.swingCoaching, exclude_none=True)
 
     if active_settings.log_sensitive_data and not active_settings.save_pose_data_only:
@@ -95,6 +98,10 @@ def build_llm_payload(payload: SwingAnalysisPayload, active_settings: Settings =
         'phases': dump_model(payload.phases, exclude_none=True),
         'trackingSummary': dump_model(payload.trackingSummary, exclude_none=True),
         'ballFlightSummary': dump_model(payload.ballFlightSummary, exclude_none=True),
+        'launchMonitor': payload.launchMonitor,
+        'impactAnalysis': payload.impactAnalysis,
+        'drySwing': payload.drySwing,
+        'swingDiagnosis': payload.swingDiagnosis,
         'biomechanics': dump_model(payload.biomechanics, exclude_none=True),
         'ballFlightEstimates': dump_model(payload.ballFlightEstimates, exclude_none=True)
         if payload.ballFlightEstimates

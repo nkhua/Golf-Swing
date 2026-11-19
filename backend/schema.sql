@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   tracking_summary_json JSON NOT NULL,
   ball_tracking_json JSON NOT NULL,
   ball_flight_summary_json JSON NOT NULL,
+  launch_monitor_json JSON NOT NULL,
+  impact_analysis_json JSON NOT NULL,
+  dry_swing_json JSON NOT NULL,
+  swing_diagnosis_json JSON NOT NULL,
   coaching_json JSON NOT NULL,
   estimates_json JSON NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

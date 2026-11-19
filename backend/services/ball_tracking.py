@@ -12,6 +12,11 @@ MAX_BALL_TRACKING_FRAMES = 90
 BALL_FLIGHT_TRACK_MS = 3500
 MIN_BALL_CONTOUR_AREA = 6
 MAX_BALL_CONTOUR_AREA_RATIO = 0.0025
+MIN_VALID_BALL_FRAMES = 4
+MIN_POST_IMPACT_BALL_FRAMES = 3
+MIN_AVERAGE_BALL_CONFIDENCE = 0.38
+BALL_NEAR_IMPACT_WINDOW_MS = 650
+BALL_VALIDATION_WINDOW_MS = 1100
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
@@ -105,8 +110,158 @@ def _detect_ball_candidate(
 
         best_score = score
         best = _pixel_point(cx, cy, width, height, 0.2 + score * 0.75, 'vision_motion')
+        best['radiusPx'] = round(radius, 2)
+        best['diameterPx'] = round(radius * 2, 2)
+        best['areaPx'] = round(area, 2)
+        best['aspectRatio'] = round(aspect, 3)
+        best['fillRatio'] = round(fill_ratio, 3)
+        best['compactness'] = round(compactness, 3)
+        best['detectionScore'] = round(score, 3)
 
     return best
+
+
+def _visible_candidates(frames: List[BallFrame], min_confidence: float = 0.22) -> List[BallFrame]:
+    return [
+        frame_data
+        for frame_data in frames
+        if isinstance(frame_data.get('ball'), dict)
+        and float(frame_data['ball'].get('confidence') or 0) >= min_confidence
+    ]
+
+
+def _ball_diameter_values(visible: List[BallFrame]) -> List[float]:
+    values = []
+    for frame_data in visible:
+        ball = frame_data.get('ball')
+        if not isinstance(ball, dict):
+            continue
+        diameter = ball.get('diameterPx')
+        radius = ball.get('radiusPx')
+        try:
+            if diameter is None and radius is not None:
+                diameter = float(radius) * 2
+            if diameter is not None:
+                values.append(float(diameter))
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
+def _average_confidence(visible: List[BallFrame]) -> float:
+    if not visible:
+        return 0
+    return sum(float(frame_data['ball'].get('confidence') or 0) for frame_data in visible) / len(visible)
+
+
+def _net_displacement_px(visible: List[BallFrame], width: int, height: int) -> float:
+    if len(visible) < 2:
+        return 0
+    first_x, first_y = _normalized_to_pixel(visible[0]['ball'], width, height)
+    last_x, last_y = _normalized_to_pixel(visible[-1]['ball'], width, height)
+    return sqrt((last_x - first_x) ** 2 + (last_y - first_y) ** 2)
+
+
+def _step_distances_px(visible: List[BallFrame], width: int, height: int) -> List[float]:
+    distances = []
+    previous = None
+    for frame_data in visible:
+        if previous is not None:
+            distances.append(_point_distance_px(previous['ball'], frame_data['ball'], width, height))
+        previous = frame_data
+    return distances
+
+
+def _validate_ball_presence(
+    frames: List[BallFrame],
+    width: int,
+    height: int,
+    impact_ms: int,
+) -> Dict[str, object]:
+    visible = _visible_candidates(frames)
+    candidate_count = len(visible)
+    reasons: List[str] = []
+
+    if candidate_count < MIN_VALID_BALL_FRAMES:
+        reasons.append('No validated golf ball track was found near impact.')
+
+    near_impact = [
+        frame_data
+        for frame_data in visible
+        if impact_ms - 180 <= int(frame_data.get('timestampMs') or 0) <= impact_ms + BALL_NEAR_IMPACT_WINDOW_MS
+    ]
+    if len(near_impact) < 1:
+        reasons.append('A ball candidate was not visible near the strike window.')
+
+    post_impact = [
+        frame_data
+        for frame_data in visible
+        if impact_ms <= int(frame_data.get('timestampMs') or 0) <= impact_ms + BALL_VALIDATION_WINDOW_MS
+    ]
+    if len(post_impact) < MIN_POST_IMPACT_BALL_FRAMES:
+        reasons.append('Post-impact ball motion was not continuous enough to estimate flight.')
+
+    average_confidence = _average_confidence(visible)
+    if average_confidence < MIN_AVERAGE_BALL_CONFIDENCE:
+        reasons.append('Ball candidate confidence was too low for actual ball-flight metrics.')
+
+    first_ball = visible[0]['ball'] if visible else None
+    if isinstance(first_ball, dict):
+        first_x, first_y = _normalized_to_pixel(first_ball, width, height)
+        if first_x < width * 0.04 or first_x > width * 0.96 or first_y < height * 0.12 or first_y > height * 0.96:
+            reasons.append('The first ball candidate was outside the expected strike-zone area.')
+
+    diameters = _ball_diameter_values(visible)
+    median_diameter = None
+    diameter_consistency = None
+    if diameters:
+        ordered = sorted(diameters)
+        median_diameter = ordered[len(ordered) // 2]
+        min_diameter = min(diameters)
+        max_diameter = max(diameters)
+        diameter_consistency = max_diameter / max(min_diameter, 1)
+        if median_diameter < 2 or median_diameter > min(width, height) * 0.09:
+            reasons.append('Ball candidate size was outside the expected golf-ball range.')
+        if diameter_consistency > 3.0:
+            reasons.append('Ball candidate size changed too much across frames.')
+    else:
+        reasons.append('Ball candidate size was not available for validation.')
+
+    net_displacement = _net_displacement_px(visible, width, height)
+    if net_displacement < max(width, height) * 0.035:
+        reasons.append('Ball candidate did not move far enough after impact.')
+
+    step_distances = _step_distances_px(visible, width, height)
+    if step_distances:
+        outlier_steps = [distance for distance in step_distances if distance > max(width, height) * 0.42]
+        if len(outlier_steps) > max(1, len(step_distances) // 3):
+            reasons.append('Ball candidate path had large discontinuities.')
+
+    confidence = _clamp(
+        0.24 * min(candidate_count / 8, 1)
+        + 0.24 * min(len(post_impact) / 5, 1)
+        + 0.26 * _clamp(average_confidence, 0, 1)
+        + 0.14 * min(net_displacement / max(width * 0.16, 1), 1)
+        + (0.12 if diameters else 0),
+        0,
+        0.92,
+    )
+
+    is_valid = not reasons
+    return {
+        'isValid': is_valid,
+        'status': 'tracked' if is_valid else 'no_ball_detected',
+        'visibleFrames': visible if is_valid else [],
+        'candidateFrameCount': candidate_count,
+        'nearImpactFrameCount': len(near_impact),
+        'postImpactFrameCount': len(post_impact),
+        'averageCandidateConfidence': round(average_confidence, 3),
+        'presenceConfidence': round(confidence if is_valid else 0, 3),
+        'netDisplacementPx': round(net_displacement, 2),
+        'medianDiameterPx': round(median_diameter, 2) if median_diameter is not None else None,
+        'diameterConsistencyRatio': round(diameter_consistency, 3) if diameter_consistency is not None else None,
+        'reasons': reasons,
+    }
 
 
 def _path_metrics(
@@ -114,12 +269,7 @@ def _path_metrics(
     width: int,
     height: int,
 ) -> Dict[str, object]:
-    visible = [
-        frame_data
-        for frame_data in frames
-        if isinstance(frame_data.get('ball'), dict)
-        and float(frame_data['ball'].get('confidence') or 0) >= 0.22
-    ]
+    visible = _visible_candidates(frames)
     if len(visible) < 2:
         return {
             'ballFrameCount': len(visible),
@@ -165,11 +315,11 @@ def _path_metrics(
         expected_mid_x = (first_x + last_x) / 2
         curvature_px = mid_x - expected_mid_x
 
-    shot_shape = 'unknown'
+    actual_shot_shape = 'unknown'
     if abs(curvature_px) > width * 0.025:
-        shot_shape = 'fade' if curvature_px > 0 else 'draw'
+        actual_shot_shape = 'fade' if curvature_px > 0 else 'draw'
     elif len(visible) >= 3:
-        shot_shape = 'straight'
+        actual_shot_shape = 'straight'
 
     average_confidence = sum(float(frame_data['ball'].get('confidence') or 0) for frame_data in visible) / len(visible)
     confidence = _clamp(0.25 + min(len(visible) / 12, 0.4) + average_confidence * 0.35, 0, 0.92)
@@ -186,7 +336,7 @@ def _path_metrics(
         'ballPathLengthPx': round(path_length, 2),
         'maxBallSpeedPxPerSec': round(max_speed, 2),
         'curvaturePx': round(curvature_px, 2),
-        'shotShape': shot_shape,
+        'actualShotShape': actual_shot_shape,
         'confidence': round(confidence, 3),
     }
 
@@ -200,12 +350,19 @@ def summarize_ball_tracking(
     height = int(metadata.get('height') or 0)
     if not frames or width <= 0 or height <= 0:
         return {
+            'status': 'no_ball_detected',
             'framesTracked': 0,
             'ballFrameCount': 0,
+            'ballCandidateFrameCount': 0,
             'averageBallConfidence': 0,
+            'ballPresenceConfidence': 0,
+            'launchDirection': None,
+            'actualShotShape': 'unknown',
             'confidence': 0,
             'quality': {
                 'ballFrameRatio': 0,
+                'candidateFrameRatio': 0,
+                'noBallDetected': True,
                 'needsLongerVideo': True,
                 'needsRetake': True,
                 'retakeReasons': ['No ball tracking frames were available.'],
@@ -213,12 +370,56 @@ def summarize_ball_tracking(
             'notes': 'No ball tracking frames were available.',
         }
 
-    metrics = _path_metrics(frames, width, height)
-    ball_count = int(metrics.get('ballFrameCount') or 0)
-    ball_ratio = ball_count / len(frames)
     tracking_start_ms = int(frames[0].get('timestampMs') or 0)
     tracking_end_ms = int(frames[-1].get('timestampMs') or tracking_start_ms)
     impact_ms = int(phases.get('impact') or tracking_start_ms) if phases else tracking_start_ms
+    validation = _validate_ball_presence(frames, width, height, impact_ms)
+    if not validation['isValid']:
+        retake_reasons = list(validation.get('reasons') or ['No validated golf ball track was found near impact.'])
+        needs_longer_video = tracking_end_ms - impact_ms < BALL_FLIGHT_TRACK_MS - 250
+        if needs_longer_video:
+            retake_reasons.append('Keep recording longer after impact so the ball flight can be tracked.')
+        return {
+            'status': 'no_ball_detected',
+            'framesTracked': len(frames),
+            'ballFrameCount': 0,
+            'ballCandidateFrameCount': int(validation.get('candidateFrameCount') or 0),
+            'nearImpactBallFrameCount': int(validation.get('nearImpactFrameCount') or 0),
+            'postImpactBallFrameCount': int(validation.get('postImpactFrameCount') or 0),
+            'averageBallConfidence': 0,
+            'averageCandidateBallConfidence': validation.get('averageCandidateConfidence') or 0,
+            'ballPresenceConfidence': 0,
+            'launchDirection': None,
+            'trajectoryAngleDegrees': None,
+            'apexHeightPx': None,
+            'carryDistancePx': None,
+            'ballPathLengthPx': None,
+            'maxBallSpeedPxPerSec': None,
+            'curvaturePx': None,
+            'actualShotShape': 'unknown',
+            'confidence': 0,
+            'trackingStartMs': tracking_start_ms,
+            'trackingEndMs': tracking_end_ms,
+            'trackingMethod': 'bright_motion_contours_after_impact_with_ball_presence_gate',
+            'validation': {key: value for key, value in validation.items() if key != 'visibleFrames'},
+            'quality': {
+                'ballFrameRatio': 0,
+                'candidateFrameRatio': round((int(validation.get('candidateFrameCount') or 0)) / len(frames), 3),
+                'noBallDetected': True,
+                'needsLongerVideo': needs_longer_video,
+                'needsRetake': True,
+                'retakeReasons': retake_reasons,
+            },
+            'notes': (
+                'No validated golf ball was detected, so actual ball flight, launch direction, and actual shot shape '
+                'were intentionally left unavailable.'
+            ),
+        }
+
+    validated_frames = validation['visibleFrames']
+    metrics = _path_metrics(validated_frames, width, height)
+    ball_count = int(metrics.get('ballFrameCount') or 0)
+    ball_ratio = ball_count / len(frames)
     needs_longer_video = tracking_end_ms - impact_ms < BALL_FLIGHT_TRACK_MS - 250
     retake_reasons: List[str] = []
     if ball_count < 2:
@@ -228,13 +429,21 @@ def summarize_ball_tracking(
 
     confidence = float(metrics.get('confidence') or 0)
     return {
+        'status': 'tracked',
         'framesTracked': len(frames),
         **metrics,
+        'ballCandidateFrameCount': int(validation.get('candidateFrameCount') or 0),
+        'nearImpactBallFrameCount': int(validation.get('nearImpactFrameCount') or 0),
+        'postImpactBallFrameCount': int(validation.get('postImpactFrameCount') or 0),
+        'ballPresenceConfidence': validation.get('presenceConfidence') or 0,
         'trackingStartMs': tracking_start_ms,
         'trackingEndMs': tracking_end_ms,
-        'trackingMethod': 'bright_motion_contours_after_impact',
+        'trackingMethod': 'bright_motion_contours_after_impact_with_ball_presence_gate',
+        'validation': {key: value for key, value in validation.items() if key != 'visibleFrames'},
         'quality': {
             'ballFrameRatio': round(ball_ratio, 3),
+            'candidateFrameRatio': round((int(validation.get('candidateFrameCount') or 0)) / len(frames), 3),
+            'noBallDetected': False,
             'needsLongerVideo': needs_longer_video,
             'needsRetake': confidence < 0.45 or ball_count < 2,
             'retakeReasons': retake_reasons,
@@ -248,10 +457,11 @@ def summarize_ball_tracking(
 
 def estimates_from_ball_summary(summary: Dict[str, object]) -> Dict[str, object]:
     confidence = float(summary.get('confidence') or 0)
-    launch_direction = summary.get('launchDirection') if confidence >= 0.45 else None
+    has_valid_ball = summary.get('status') == 'tracked' and confidence >= 0.45
+    launch_direction = summary.get('launchDirection') if has_valid_ball else None
     return {
         'launchDirection': launch_direction,
-        'shotShape': summary.get('shotShape') or 'unknown',
+        'actualShotShape': summary.get('actualShotShape') if has_valid_ball else 'unknown',
         'spinTendency': 'unknown',
         'confidence': round(confidence, 3),
     }

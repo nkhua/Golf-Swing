@@ -53,6 +53,8 @@ class TrackedPoint(BaseModel):
     z: Optional[float] = None
     confidence: float = 0
     source: TrackingPointSource
+    radiusPx: Optional[float] = None
+    diameterPx: Optional[float] = None
 
 
 class TrackedLine(BaseModel):
@@ -135,13 +137,19 @@ class SwingTrackingSummary(BaseModel):
 
 
 class BallFlightTrackingSummary(BaseModel):
+    status: Literal['tracked', 'no_ball_detected'] = 'no_ball_detected'
     framesTracked: int = 0
     ballFrameCount: int = 0
+    ballCandidateFrameCount: int = 0
+    nearImpactBallFrameCount: int = 0
+    postImpactBallFrameCount: int = 0
     firstBallMs: Optional[int] = None
     lastBallMs: Optional[int] = None
     trackingStartMs: Optional[int] = None
     trackingEndMs: Optional[int] = None
     averageBallConfidence: float = 0
+    averageCandidateBallConfidence: float = 0
+    ballPresenceConfidence: float = 0
     launchDirection: Optional[Literal['left', 'straight', 'right']] = None
     trajectoryAngleDegrees: Optional[float] = None
     apexHeightPx: Optional[float] = None
@@ -149,8 +157,9 @@ class BallFlightTrackingSummary(BaseModel):
     ballPathLengthPx: Optional[float] = None
     maxBallSpeedPxPerSec: Optional[float] = None
     curvaturePx: Optional[float] = None
-    shotShape: Optional[Literal['draw', 'fade', 'straight', 'unknown']] = None
-    trackingMethod: str = 'bright_motion_contours_after_impact'
+    actualShotShape: Optional[Literal['draw', 'fade', 'straight', 'unknown']] = 'unknown'
+    trackingMethod: str = 'bright_motion_contours_after_impact_with_ball_presence_gate'
+    validation: Dict[str, object] = Field(default_factory=dict)
     confidence: float = 0
     quality: Dict[str, object] = Field(default_factory=dict)
     notes: Optional[str] = None
@@ -239,7 +248,7 @@ class BallFlightEstimates(BaseModel):
     # before these can be interpreted as ground truth.
     launchAngleRange: Optional[Tuple[float, float]] = None
     launchDirection: Optional[Literal['left', 'straight', 'right']] = None
-    shotShape: Optional[Literal['draw', 'fade', 'straight', 'unknown']] = None
+    actualShotShape: Optional[Literal['draw', 'fade', 'straight', 'unknown']] = None
     carryRangeYards: Optional[Tuple[float, float]] = None
     spinTendency: Optional[Literal['low', 'medium', 'high', 'unknown']] = None
     confidence: Optional[float] = None
@@ -249,6 +258,7 @@ class SwingPrivacyFlags(BaseModel):
     rawVideoUploaded: bool = False
     userConsentedToUpload: bool = False
     videoFramesSentToLlm: bool = False
+    impactFramesSentToLlm: bool = False
     swingMetricsSentToLlm: bool = False
 
 
@@ -263,6 +273,10 @@ class SwingAnalysisPayload(BaseModel):
     trackingSummary: SwingTrackingSummary = Field(default_factory=SwingTrackingSummary)
     ballTrackingFrames: List[FrameBallTrackingData] = Field(default_factory=list)
     ballFlightSummary: BallFlightTrackingSummary = Field(default_factory=BallFlightTrackingSummary)
+    launchMonitor: Dict[str, object] = Field(default_factory=dict)
+    impactAnalysis: Dict[str, object] = Field(default_factory=dict)
+    drySwing: Dict[str, object] = Field(default_factory=dict)
+    swingDiagnosis: Dict[str, object] = Field(default_factory=dict)
     swingCoaching: SwingCoachingAnalysis = Field(default_factory=SwingCoachingAnalysis)
     biomechanics: SwingBiomechanicsMetrics = Field(default_factory=SwingBiomechanicsMetrics)
     ballFlightEstimates: Optional[BallFlightEstimates] = None
@@ -287,5 +301,9 @@ class StoredAnalysisResult(BaseModel):
     trackingSummaryJson: Dict = Field(default_factory=dict)
     ballTrackingJson: List[Dict] = Field(default_factory=list)
     ballFlightSummaryJson: Dict = Field(default_factory=dict)
+    launchMonitorJson: Dict = Field(default_factory=dict)
+    impactAnalysisJson: Dict = Field(default_factory=dict)
+    drySwingJson: Dict = Field(default_factory=dict)
+    swingDiagnosisJson: Dict = Field(default_factory=dict)
     coachingJson: Dict = Field(default_factory=dict)
     estimatesJson: Optional[Dict] = None

@@ -29,10 +29,13 @@ KNOWN_ENV_KEYS = {
     'SEND_POSE_DATA_TO_LLM',
     'SEND_ONLY_SUMMARIZED_METRICS_TO_LLM',
     'ENABLE_LLM_SWING_COACHING',
+    'ENABLE_LLM_IMPACT_ANALYSIS',
     'LLM_SWING_TRIM_MODEL',
     'LLM_SWING_TRIM_MAX_FRAMES',
     'LLM_SWING_COACH_MODEL',
     'LLM_SWING_COACH_MAX_POINTS',
+    'LLM_IMPACT_ANALYSIS_MODEL',
+    'LLM_IMPACT_ANALYSIS_MAX_FRAMES',
     *SECRET_KEYS,
 }
 
@@ -127,10 +130,13 @@ class Settings:
     send_pose_data_to_llm: bool
     send_only_summarized_metrics_to_llm: bool
     enable_llm_swing_coaching: bool
+    enable_llm_impact_analysis: bool
     llm_swing_trim_model: str
     llm_swing_trim_max_frames: int
     llm_swing_coach_model: str
     llm_swing_coach_max_points: int
+    llm_impact_analysis_model: str
+    llm_impact_analysis_max_frames: int
     openai_api_key: str
     database_url: str
     storage_bucket: str
@@ -161,10 +167,13 @@ class Settings:
             send_pose_data_to_llm=_bool_value(values, 'SEND_POSE_DATA_TO_LLM', False),
             send_only_summarized_metrics_to_llm=_bool_value(values, 'SEND_ONLY_SUMMARIZED_METRICS_TO_LLM', True),
             enable_llm_swing_coaching=_bool_value(values, 'ENABLE_LLM_SWING_COACHING', False),
+            enable_llm_impact_analysis=_bool_value(values, 'ENABLE_LLM_IMPACT_ANALYSIS', False),
             llm_swing_trim_model=_str_value(values, 'LLM_SWING_TRIM_MODEL', 'gpt-4.1-mini'),
             llm_swing_trim_max_frames=_int_value(values, 'LLM_SWING_TRIM_MAX_FRAMES', 12),
             llm_swing_coach_model=_str_value(values, 'LLM_SWING_COACH_MODEL', 'gpt-4.1-mini'),
             llm_swing_coach_max_points=_int_value(values, 'LLM_SWING_COACH_MAX_POINTS', 3),
+            llm_impact_analysis_model=_str_value(values, 'LLM_IMPACT_ANALYSIS_MODEL', _str_value(values, 'LLM_SWING_TRIM_MODEL', 'gpt-4.1-mini')),
+            llm_impact_analysis_max_frames=_int_value(values, 'LLM_IMPACT_ANALYSIS_MAX_FRAMES', 3),
             openai_api_key=_str_value(values, 'OPENAI_API_KEY'),
             database_url=_str_value(values, 'DATABASE_URL'),
             storage_bucket=_str_value(values, 'STORAGE_BUCKET'),
@@ -184,6 +193,8 @@ class Settings:
             raise ConfigError('LLM_SWING_TRIM_MAX_FRAMES must be between 2 and 24.')
         if self.llm_swing_coach_max_points < 1 or self.llm_swing_coach_max_points > 5:
             raise ConfigError('LLM_SWING_COACH_MAX_POINTS must be between 1 and 5.')
+        if self.llm_impact_analysis_max_frames < 1 or self.llm_impact_analysis_max_frames > 4:
+            raise ConfigError('LLM_IMPACT_ANALYSIS_MAX_FRAMES must be between 1 and 4.')
 
         if self.is_production:
             if self.debug:

@@ -28,6 +28,10 @@ class SwingRepository:
             trackingSummaryJson=dump_model(payload.trackingSummary, exclude_none=True),
             ballTrackingJson=[dump_model(frame, exclude_none=True) for frame in payload.ballTrackingFrames],
             ballFlightSummaryJson=dump_model(payload.ballFlightSummary, exclude_none=True),
+            launchMonitorJson=payload.launchMonitor,
+            impactAnalysisJson=payload.impactAnalysis,
+            drySwingJson=payload.drySwing,
+            swingDiagnosisJson=payload.swingDiagnosis,
             coachingJson=dump_model(payload.swingCoaching, exclude_none=True),
             estimatesJson=dump_model(payload.ballFlightEstimates, exclude_none=True)
             if payload.ballFlightEstimates

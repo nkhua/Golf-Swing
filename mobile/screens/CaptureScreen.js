@@ -6,6 +6,10 @@ import { ServerSwingAnalyzer, getConfiguredBackendUrl } from '../services/analyz
 
 const ANALYSIS_MODE = (process.env.EXPO_PUBLIC_ANALYSIS_MODE || 'server').toLowerCase();
 const BALL_FLIGHT_CAPTURE_DURATION_SECONDS = 16;
+const CAMERA_FACING_LABELS = {
+  back: 'Back camera',
+  front: 'Front camera',
+};
 
 const shouldUseServerFirst = () => ANALYSIS_MODE === 'server';
 
@@ -23,6 +27,7 @@ const getAnalysisModeLabel = () => {
 
 export default function CaptureScreen({ navigation }) {
   const [hasPermission, setHasPermission] = useState(null);
+  const [cameraFacing, setCameraFacing] = useState('back');
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [pendingVideoUri, setPendingVideoUri] = useState(null);
@@ -32,12 +37,29 @@ export default function CaptureScreen({ navigation }) {
   const onDeviceAnalyzerRef = useRef(new OnDeviceSwingAnalyzer());
   const serverAnalyzerRef = useRef(new ServerSwingAnalyzer());
   const backendUrl = getConfiguredBackendUrl();
+  const currentCameraLabel = CAMERA_FACING_LABELS[cameraFacing];
+  const nextCameraFacing = cameraFacing === 'back' ? 'front' : 'back';
+  const nextCameraLabel = CAMERA_FACING_LABELS[nextCameraFacing];
+  const cameraControlsDisabled = isRecording || isAnalyzing;
+
+  const buildCaptureMetadata = () => ({
+    cameraAngle: 'down_the_line',
+    cameraFacing,
+  });
 
   useEffect(() => {
     Camera.requestCameraPermissionsAsync().then(({ status }) => {
       setHasPermission(status === 'granted');
     });
   }, []);
+
+  const toggleCameraFacing = () => {
+    if (cameraControlsDisabled) {
+      return;
+    }
+
+    setCameraFacing((currentFacing) => (currentFacing === 'back' ? 'front' : 'back'));
+  };
 
   const startRecording = async () => {
     if (cameraRef.current && !isRecording) {
@@ -90,9 +112,7 @@ export default function CaptureScreen({ navigation }) {
 
       const result = await onDeviceAnalyzer.analyzeVideo({
         uri,
-        metadata: {
-          cameraAngle: 'down_the_line',
-        },
+        metadata: buildCaptureMetadata(),
       });
       navigation.navigate('Results', { analysis: { ...result, localVideoUri: uri } });
     } catch (error) {
@@ -126,9 +146,7 @@ export default function CaptureScreen({ navigation }) {
       await serverAnalyzerRef.current.checkHealth();
       const result = await serverAnalyzerRef.current.analyzeVideo({
         uri: pendingVideoUri,
-        metadata: {
-          cameraAngle: 'down_the_line',
-        },
+        metadata: buildCaptureMetadata(),
         userConsentedToUpload: true,
       });
       const localVideoUri = pendingVideoUri;
@@ -152,18 +170,21 @@ export default function CaptureScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <CameraView
+        key={cameraFacing}
         style={styles.camera}
-        facing="back"
+        facing={cameraFacing}
         mode="video"
         mute={true}
+        mirror={false}
         ref={cameraRef}
       />
       <View style={styles.instructions}>
-        <Text style={styles.heading}>Back-view swing capture</Text>
+        <Text style={styles.heading}>Swing capture</Text>
         <Text style={styles.text}>Position the camera directly behind the player and keep the full body visible.</Text>
         <Text style={styles.text}>Keep recording through impact and the first few seconds of ball flight.</Text>
         <View style={styles.statusPanel}>
           <Text style={styles.statusText}>Analysis: {getAnalysisModeLabel()}</Text>
+          <Text style={styles.statusText}>Camera: {currentCameraLabel}</Text>
           <Text style={styles.statusText}>Backend: {backendUrl || 'Not configured'}</Text>
           {backendStatus ? <Text style={styles.statusText}>Status: {backendStatus}</Text> : null}
           <TouchableOpacity
@@ -176,6 +197,15 @@ export default function CaptureScreen({ navigation }) {
         </View>
       </View>
       <View style={styles.controls}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={`Flip to ${nextCameraLabel.toLowerCase()}`}
+          style={[styles.flipButton, cameraControlsDisabled && styles.buttonDisabled]}
+          onPress={toggleCameraFacing}
+          disabled={cameraControlsDisabled}
+        >
+          <Text style={styles.flipButtonText}>Flip to {nextCameraLabel}</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, isRecording && styles.buttonStop]}
           onPress={isRecording ? stopRecording : startRecording}
@@ -258,6 +288,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  flipButton: {
+    width: 220,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#8ec5ff',
+    marginBottom: 12,
+  },
+  flipButtonText: {
+    color: '#8ec5ff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  buttonDisabled: {
+    opacity: 0.42,
   },
   buttonStop: {
     backgroundColor: '#FF3B30',

@@ -3,7 +3,7 @@ import unittest
 import cv2
 import numpy as np
 
-from services.club_tracking import summarize_tracking_frames, track_swing_points_for_frame
+from services.club_tracking import estimate_club_face_proxy, summarize_tracking_frames, track_swing_points_for_frame
 
 
 def landmark(name, x, y, visibility=0.95):
@@ -122,6 +122,41 @@ class ClubTrackingTests(unittest.TestCase):
         self.assertEqual(summary['golfMetrics']['leftWristAngleAtImpact'], 135)
         self.assertEqual(summary['golfMetrics']['shaftLeanAtImpactDegrees'], 45)
         self.assertGreater(summary['quality']['overallTrackingConfidence'], 0.8)
+
+    def test_estimates_club_face_proxy_from_ball_start_and_club_path(self):
+        frames = [
+            {
+                'frameIndex': 0,
+                'timestampMs': 1000,
+                'clubHead': {'x': 0.58, 'y': 0.56, 'confidence': 0.72, 'source': 'vision_line'},
+            },
+            {
+                'frameIndex': 1,
+                'timestampMs': 1320,
+                'clubHead': {'x': 0.72, 'y': 0.43, 'confidence': 0.82, 'source': 'vision_line'},
+            },
+            {
+                'frameIndex': 2,
+                'timestampMs': 1640,
+                'clubHead': {'x': 0.77, 'y': 0.39, 'confidence': 0.75, 'source': 'vision_line'},
+            },
+        ]
+
+        estimate = estimate_club_face_proxy(
+            frames,
+            {'width': 1000, 'height': 1000, 'cameraAngle': 'down_the_line'},
+            {'impact': 1320},
+            {'launchDirection': 'right', 'confidence': 0.78},
+            {'quality': {'overallTrackingConfidence': 0.84}, 'estimatedImpactMs': 1320},
+        )
+
+        self.assertEqual(estimate['status'], 'estimated')
+        self.assertEqual(estimate['faceToTarget'], 'open')
+        self.assertEqual(estimate['clubPathProxy'], 'in_to_out')
+        self.assertEqual(estimate['faceToPath'], 'closed')
+        self.assertEqual(estimate['estimatedDegreesToTarget'], 6.0)
+        self.assertGreater(estimate['confidence'], 0.6)
+        self.assertIn('video_proxy_not_launch_monitor', estimate['measurementType'])
 
 
 if __name__ == '__main__':
